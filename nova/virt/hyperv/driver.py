@@ -135,8 +135,8 @@ class HyperVDriver(driver.ComputeDriver):
         """Sets the specified host's ability to accept new instances."""
         pass
 
-    def snapshot(self, context, instance, name):
-        self._snapshotops.snapshot(context, instance, name)
+    def snapshot(self, context, instance, name, update_task_state):
+        self._snapshotops.snapshot(context, instance, name, update_task_state)
 
     def pause(self, instance):
         self._vmops.pause(instance)

@@ -144,7 +144,7 @@ class BareMetalDriver(driver.ComputeDriver):
         raise exception.Invalid("detach_volume not supported for baremetal.")
 
     @exception.wrap_exception
-    def snapshot(self, instance, image_id):
+    def snapshot(self, instance, image_id, update_task_state):
         raise exception.Invalid("snapshot not supported for baremetal.")
 
     @exception.wrap_exception

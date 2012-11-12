@@ -31,6 +31,7 @@ from xml.dom import minidom
 from nova.api.ec2 import cloud
 from nova.compute import instance_types
 from nova.compute import power_state
+from nova.compute import task_states
 from nova.compute import vm_mode
 from nova.compute import vm_states
 from nova import config
@@ -1175,6 +1176,11 @@ class LibvirtConnTestCase(test.TestCase):
         self.assertEqual(devices, ['vda', 'vdb'])
 
     def test_snapshot_in_ami_format(self):
+        updated_task_states = []
+
+        def update_task_state(**kwargs):
+            updated_task_states.append(kwargs['task_state'])
+
         self.flags(libvirt_snapshots_directory='./')
 
         # Start test
@@ -1204,15 +1210,27 @@ class LibvirtConnTestCase(test.TestCase):
         self.mox.ReplayAll()
 
         conn = libvirt_driver.LibvirtDriver(fake.FakeVirtAPI(), False)
-        conn.snapshot(self.context, instance_ref, recv_meta['id'])
+        conn.snapshot(self.context, instance_ref, recv_meta['id'],
+                      update_task_state)
 
         snapshot = image_service.show(context, recv_meta['id'])
+        self.assertEquals(len(updated_task_states), 2)
+        self.assertEquals(updated_task_states[0],
+            task_states.IMAGE_PENDING_UPLOAD)
+        self.assertEquals(updated_task_states[1],
+            task_states.IMAGE_UPLOADING)
+        self.assertEquals(snapshot['properties']['image_state'], 'available')
         self.assertEquals(snapshot['properties']['image_state'], 'available')
         self.assertEquals(snapshot['status'], 'active')
         self.assertEquals(snapshot['disk_format'], 'ami')
         self.assertEquals(snapshot['name'], snapshot_name)
 
     def test_lxc_snapshot_in_ami_format(self):
+        updated_task_states = []
+
+        def update_task_state(**kwargs):
+            updated_task_states.append(kwargs['task_state'])
+
         self.flags(libvirt_snapshots_directory='./',
                    libvirt_type='lxc')
 
@@ -1243,15 +1261,26 @@ class LibvirtConnTestCase(test.TestCase):
         self.mox.ReplayAll()
 
         conn = libvirt_driver.LibvirtDriver(fake.FakeVirtAPI(), False)
-        conn.snapshot(self.context, instance_ref, recv_meta['id'])
+        conn.snapshot(self.context, instance_ref, recv_meta['id'],
+                      update_task_state)
 
         snapshot = image_service.show(context, recv_meta['id'])
+        self.assertEquals(len(updated_task_states), 2)
+        self.assertEquals(updated_task_states[0],
+            task_states.IMAGE_PENDING_UPLOAD)
+        self.assertEquals(updated_task_states[1],
+            task_states.IMAGE_UPLOADING)
         self.assertEquals(snapshot['properties']['image_state'], 'available')
         self.assertEquals(snapshot['status'], 'active')
         self.assertEquals(snapshot['disk_format'], 'ami')
         self.assertEquals(snapshot['name'], snapshot_name)
 
     def test_snapshot_in_raw_format(self):
+        updated_task_states = []
+
+        def update_task_state(**kwargs):
+            updated_task_states.append(kwargs['task_state'])
+
         self.flags(libvirt_snapshots_directory='./')
 
         # Start test
@@ -1282,15 +1311,26 @@ class LibvirtConnTestCase(test.TestCase):
         self.mox.ReplayAll()
 
         conn = libvirt_driver.LibvirtDriver(fake.FakeVirtAPI(), False)
-        conn.snapshot(self.context, instance_ref, recv_meta['id'])
+        conn.snapshot(self.context, instance_ref, recv_meta['id'],
+                      update_task_state)
 
         snapshot = image_service.show(context, recv_meta['id'])
+        self.assertEquals(len(updated_task_states), 2)
+        self.assertEquals(updated_task_states[0],
+            task_states.IMAGE_PENDING_UPLOAD)
+        self.assertEquals(updated_task_states[1],
+            task_states.IMAGE_UPLOADING)
         self.assertEquals(snapshot['properties']['image_state'], 'available')
         self.assertEquals(snapshot['status'], 'active')
         self.assertEquals(snapshot['disk_format'], 'raw')
         self.assertEquals(snapshot['name'], snapshot_name)
 
     def test_lxc_snapshot_in_raw_format(self):
+        updated_task_states = []
+
+        def update_task_state(**kwargs):
+            updated_task_states.append(kwargs['task_state'])
+
         self.flags(libvirt_snapshots_directory='./',
                    libvirt_type='lxc')
 
@@ -1322,15 +1362,26 @@ class LibvirtConnTestCase(test.TestCase):
         self.mox.ReplayAll()
 
         conn = libvirt_driver.LibvirtDriver(fake.FakeVirtAPI(), False)
-        conn.snapshot(self.context, instance_ref, recv_meta['id'])
+        conn.snapshot(self.context, instance_ref, recv_meta['id'],
+                      update_task_state)
 
         snapshot = image_service.show(context, recv_meta['id'])
+        self.assertEquals(len(updated_task_states), 2)
+        self.assertEquals(updated_task_states[0],
+            task_states.IMAGE_PENDING_UPLOAD)
+        self.assertEquals(updated_task_states[1],
+            task_states.IMAGE_UPLOADING)
         self.assertEquals(snapshot['properties']['image_state'], 'available')
         self.assertEquals(snapshot['status'], 'active')
         self.assertEquals(snapshot['disk_format'], 'raw')
         self.assertEquals(snapshot['name'], snapshot_name)
 
     def test_snapshot_in_qcow2_format(self):
+        updated_task_states = []
+
+        def update_task_state(**kwargs):
+            updated_task_states.append(kwargs['task_state'])
+
         self.flags(snapshot_image_format='qcow2',
                    libvirt_snapshots_directory='./')
 
@@ -1357,15 +1408,26 @@ class LibvirtConnTestCase(test.TestCase):
         self.mox.ReplayAll()
 
         conn = libvirt_driver.LibvirtDriver(fake.FakeVirtAPI(), False)
-        conn.snapshot(self.context, instance_ref, recv_meta['id'])
+        conn.snapshot(self.context, instance_ref, recv_meta['id'],
+                      update_task_state)
 
         snapshot = image_service.show(context, recv_meta['id'])
+        self.assertEquals(len(updated_task_states), 2)
+        self.assertEquals(updated_task_states[0],
+            task_states.IMAGE_PENDING_UPLOAD)
+        self.assertEquals(updated_task_states[1],
+            task_states.IMAGE_UPLOADING)
         self.assertEquals(snapshot['properties']['image_state'], 'available')
         self.assertEquals(snapshot['status'], 'active')
         self.assertEquals(snapshot['disk_format'], 'qcow2')
         self.assertEquals(snapshot['name'], snapshot_name)
 
     def test_lxc_snapshot_in_qcow2_format(self):
+        updated_task_states = []
+
+        def update_task_state(**kwargs):
+            updated_task_states.append(kwargs['task_state'])
+
         self.flags(snapshot_image_format='qcow2',
                    libvirt_snapshots_directory='./',
                    libvirt_type='lxc')
@@ -1393,15 +1455,26 @@ class LibvirtConnTestCase(test.TestCase):
         self.mox.ReplayAll()
 
         conn = libvirt_driver.LibvirtDriver(fake.FakeVirtAPI(), False)
-        conn.snapshot(self.context, instance_ref, recv_meta['id'])
+        conn.snapshot(self.context, instance_ref, recv_meta['id'],
+                      update_task_state)
 
         snapshot = image_service.show(context, recv_meta['id'])
+        self.assertEquals(len(updated_task_states), 2)
+        self.assertEquals(updated_task_states[0],
+            task_states.IMAGE_PENDING_UPLOAD)
+        self.assertEquals(updated_task_states[1],
+            task_states.IMAGE_UPLOADING)
         self.assertEquals(snapshot['properties']['image_state'], 'available')
         self.assertEquals(snapshot['status'], 'active')
         self.assertEquals(snapshot['disk_format'], 'qcow2')
         self.assertEquals(snapshot['name'], snapshot_name)
 
     def test_snapshot_no_image_architecture(self):
+        updated_task_states = []
+
+        def update_task_state(**kwargs):
+            updated_task_states.append(kwargs['task_state'])
+
         self.flags(libvirt_snapshots_directory='./')
 
         # Start test
@@ -1431,14 +1504,25 @@ class LibvirtConnTestCase(test.TestCase):
         self.mox.ReplayAll()
 
         conn = libvirt_driver.LibvirtDriver(fake.FakeVirtAPI(), False)
-        conn.snapshot(self.context, instance_ref, recv_meta['id'])
+        conn.snapshot(self.context, instance_ref, recv_meta['id'],
+                      update_task_state)
 
         snapshot = image_service.show(context, recv_meta['id'])
+        self.assertEquals(len(updated_task_states), 2)
+        self.assertEquals(updated_task_states[0],
+            task_states.IMAGE_PENDING_UPLOAD)
+        self.assertEquals(updated_task_states[1],
+            task_states.IMAGE_UPLOADING)
         self.assertEquals(snapshot['properties']['image_state'], 'available')
         self.assertEquals(snapshot['status'], 'active')
         self.assertEquals(snapshot['name'], snapshot_name)
 
     def test_lxc_snapshot_no_image_architecture(self):
+        updated_task_states = []
+
+        def update_task_state(**kwargs):
+            updated_task_states.append(kwargs['task_state'])
+
         self.flags(libvirt_snapshots_directory='./',
                    libvirt_type='lxc')
 
@@ -1469,14 +1553,25 @@ class LibvirtConnTestCase(test.TestCase):
         self.mox.ReplayAll()
 
         conn = libvirt_driver.LibvirtDriver(fake.FakeVirtAPI(), False)
-        conn.snapshot(self.context, instance_ref, recv_meta['id'])
+        conn.snapshot(self.context, instance_ref, recv_meta['id'],
+                      update_task_state)
 
         snapshot = image_service.show(context, recv_meta['id'])
+        self.assertEquals(len(updated_task_states), 2)
+        self.assertEquals(updated_task_states[0],
+            task_states.IMAGE_PENDING_UPLOAD)
+        self.assertEquals(updated_task_states[1],
+            task_states.IMAGE_UPLOADING)
         self.assertEquals(snapshot['properties']['image_state'], 'available')
         self.assertEquals(snapshot['status'], 'active')
         self.assertEquals(snapshot['name'], snapshot_name)
 
     def test_snapshot_no_original_image(self):
+        updated_task_states = []
+
+        def update_task_state(**kwargs):
+            updated_task_states.append(kwargs['task_state'])
+
         self.flags(libvirt_snapshots_directory='./')
 
         # Start test
@@ -1502,14 +1597,25 @@ class LibvirtConnTestCase(test.TestCase):
         self.mox.ReplayAll()
 
         conn = libvirt_driver.LibvirtDriver(fake.FakeVirtAPI(), False)
-        conn.snapshot(self.context, instance_ref, recv_meta['id'])
+        conn.snapshot(self.context, instance_ref, recv_meta['id'],
+                      update_task_state)
 
         snapshot = image_service.show(context, recv_meta['id'])
+        self.assertEquals(len(updated_task_states), 2)
+        self.assertEquals(updated_task_states[0],
+            task_states.IMAGE_PENDING_UPLOAD)
+        self.assertEquals(updated_task_states[1],
+            task_states.IMAGE_UPLOADING)
         self.assertEquals(snapshot['properties']['image_state'], 'available')
         self.assertEquals(snapshot['status'], 'active')
         self.assertEquals(snapshot['name'], snapshot_name)
 
     def test_lxc_snapshot_no_original_image(self):
+        updated_task_states = []
+
+        def update_task_state(**kwargs):
+            updated_task_states.append(kwargs['task_state'])
+
         self.flags(libvirt_snapshots_directory='./',
                    libvirt_type='lxc')
 
@@ -1536,9 +1642,15 @@ class LibvirtConnTestCase(test.TestCase):
         self.mox.ReplayAll()
 
         conn = libvirt_driver.LibvirtDriver(False)
-        conn.snapshot(self.context, instance_ref, recv_meta['id'])
+        conn.snapshot(self.context, instance_ref, recv_meta['id'],
+                      update_task_state)
 
         snapshot = image_service.show(context, recv_meta['id'])
+        self.assertEquals(len(updated_task_states), 2)
+        self.assertEquals(updated_task_states[0],
+            task_states.IMAGE_PENDING_UPLOAD)
+        self.assertEquals(updated_task_states[1],
+            task_states.IMAGE_UPLOADING)
         self.assertEquals(snapshot['properties']['image_state'], 'available')
         self.assertEquals(snapshot['status'], 'active')
         self.assertEquals(snapshot['name'], snapshot_name)

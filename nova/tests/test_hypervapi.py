@@ -25,6 +25,7 @@ import sys
 import uuid
 
 from nova.compute import power_state
+from nova.compute import task_states
 from nova import config
 from nova import context
 from nova import db
@@ -358,26 +359,52 @@ class HyperVAPITestCase(basetestcase.BaseTestCase):
             self.assertTrue(self._fetched_image is None)
 
     def test_snapshot_with_update_failure(self):
+        updated_task_states = []
+
+        def update_task_state(**kwargs):
+            updated_task_states.append(kwargs['task_state'])
+
         self._spawn_instance(True)
 
         self._update_image_raise_exception = True
         snapshot_name = 'test_snapshot_' + str(uuid.uuid4())
         self.assertRaises(vmutils.HyperVException, self._conn.snapshot,
-            self._context, self._instance_data, snapshot_name)
+            self._context, self._instance_data, snapshot_name,
+            update_task_state)
+
+        # assert states changed in correct order
+        self.assertEquals(len(updated_task_states), 2)
+        self.assertEquals(updated_task_states[0],
+            task_states.IMAGE_PENDING_UPLOAD)
+        self.assertEquals(updated_task_states[1],
+            task_states.IMAGE_UPLOADING)
 
         # assert VM snapshots have been removed
         self.assertEquals(self._hypervutils.get_vm_snapshots_count(
             self._instance_data["name"]), 0)
 
     def test_snapshot(self):
+        updated_task_states = []
+
+        def update_task_state(**kwargs):
+            updated_task_states.append(kwargs['task_state'])
+
         self._spawn_instance(True)
 
         snapshot_name = 'test_snapshot_' + str(uuid.uuid4())
-        self._conn.snapshot(self._context, self._instance_data, snapshot_name)
+        self._conn.snapshot(self._context, self._instance_data, snapshot_name,
+        update_task_state)
 
         self.assertTrue(self._image_metadata and
                 "disk_format" in self._image_metadata and
                 self._image_metadata["disk_format"] == "vhd")
+
+        # assert states changed in correct order
+        self.assertEquals(len(updated_task_states), 2)
+        self.assertEquals(updated_task_states[0],
+                          task_states.IMAGE_PENDING_UPLOAD)
+        self.assertEquals(updated_task_states[1],
+                          task_states.IMAGE_UPLOADING)
 
         # assert VM snapshots have been removed
         self.assertEquals(self._hypervutils.get_vm_snapshots_count(

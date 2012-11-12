@@ -20,6 +20,7 @@ Test suite for VMWareAPI.
 """
 
 from nova.compute import power_state
+from nova.compute import task_states
 from nova import context
 from nova import db
 from nova import exception
@@ -160,17 +161,32 @@ class VMWareAPIVMTestCase(test.TestCase):
         self._check_vm_info(info, power_state.RUNNING)
 
     def test_snapshot(self):
+        updated_task_states = []
+
+        def update_task_state(**kwargs):
+            updated_task_states.append(kwargs['task_state'])
         self._create_vm()
         info = self.conn.get_info({'name': 1})
         self._check_vm_info(info, power_state.RUNNING)
-        self.conn.snapshot(self.context, self.instance, "Test-Snapshot")
+        self.conn.snapshot(self.context, self.instance, "Test-Snapshot",
+                           update_task_state)
         info = self.conn.get_info({'name': 1})
         self._check_vm_info(info, power_state.RUNNING)
+        self.assertEquals(len(updated_task_states), 2)
+        self.assertEquals(updated_task_states[0],
+            task_states.IMAGE_PENDING_UPLOAD)
+        self.assertEquals(updated_task_states[1],
+            task_states.IMAGE_UPLOADING)
 
     def test_snapshot_non_existent(self):
+        updated_task_states = []
+
+        def update_task_state(**kwargs):
+            updated_task_states.append(kwargs['task_state'])
         self._create_instance_in_the_db()
         self.assertRaises(exception.InstanceNotFound, self.conn.snapshot,
-                          self.context, self.instance, "Test-Snapshot")
+                          self.context, self.instance, "Test-Snapshot",
+                          update_task_state)
 
     def test_reboot(self):
         self._create_vm()

@@ -59,6 +59,7 @@ from nova.api.metadata import base as instance_metadata
 from nova import block_device
 from nova.compute import instance_types
 from nova.compute import power_state
+from nova.compute import task_states
 from nova.compute import vm_mode
 from nova import config
 from nova import context as nova_context
@@ -780,7 +781,7 @@ class LibvirtDriver(driver.ComputeDriver):
             return 'dev/%s' % filesystem
 
     @exception.wrap_exception()
-    def snapshot(self, context, instance, image_href):
+    def snapshot(self, context, instance, image_href, update_task_state):
         """Create snapshot from a running VM instance.
 
         This command only works with qemu 0.14+
@@ -848,6 +849,7 @@ class LibvirtDriver(driver.ComputeDriver):
                                                image_type=source_format)
 
         snapshot.create()
+        update_task_state(task_state=task_states.IMAGE_PENDING_UPLOAD)
 
         # Export the snapshot to a raw image
         snapshot_directory = CONF.libvirt_snapshots_directory
@@ -865,6 +867,9 @@ class LibvirtDriver(driver.ComputeDriver):
                         self._create_domain(domain=virt_dom)
 
             # Upload that image to the image service
+
+            update_task_state(task_state=task_states.IMAGE_UPLOADING,
+                     expected_task_state=task_states.IMAGE_PENDING_UPLOAD)
             with libvirt_utils.file_open(out_path) as image_file:
                 image_service.update(context,
                                      image_href,
