@@ -34,6 +34,16 @@ import swift_client
 configure_logging('swift')
 
 
+class ChunkReader(object):
+    def __init__(self, file_obj, checksum):
+        self.file_obj = file_obj
+        self.checksum = checksum
+
+    def read(self, num_bytes):
+        result = self.file_obj.read(num_bytes)
+        self.checksum.update(result)
+
+
 def create_container_if_missing(container, swift_conn, create_container_on_put):
     """
     Creates a missing container in Swift if the
@@ -100,7 +110,7 @@ def make_swift_connection(enable_snet, auth_version, auth_url, user, key,
             full_auth_url, user, key, snet=snet, auth_version=auth_version)
 
 
-def _upload_tarball(staging_path, image_id, image_size, **params):
+def _upload_tarball(staging_path, image_id, **params):
     """
     Create a tarball of the image and then stream that into Glance
     using chunked-transfer-encoded HTTP.
@@ -110,7 +120,7 @@ def _upload_tarball(staging_path, image_id, image_size, **params):
     user = params['swift_store_user']
     key = params['swift_store_key']
     auth_version = params['swift_store_auth_version']
-    container =  params['swift_store_container']
+    swift_container =  params['swift_store_container']
     large_object_size = params['swift_store_large_object_size']
     large_object_chunk_size = params['swift_store_large_object_chunk_size']
     create_container_on_put = params['swift_store_create_container_on_put']
@@ -136,33 +146,34 @@ def _upload_tarball(staging_path, image_id, image_size, **params):
                                       storage_url=storage_url)
 
     obj_name = str(image_id)
-    swift_container = container
-    auth_or_store_url = auth_address
 
     create_container_if_missing(swift_container, swift_conn,
                                 create_container_on_put)
 
     try:
-        if image_size > 0 and image_size < large_object_size:
-            # Image size is known, and is less than large_object_size.
-            # Send to Swift with regular PUT.
-            obj_etag = swift_conn.put_object(container, obj_name,
-                                             image_data,
-                                             content_length=image_size)
-        else:
-            checksum = hashlib.md5()
-            if image_size == 0:
-                image_size = os.path.getsize(image_data)
-            content_length = image_size
-            checksum.update(image_data)
-            # Now we write the object manifest and return the
-            # manifest's etag...
-            manifest = "%s/%s" % (container, obj_name)
-            headers = {'ETag': hashlib.md5("").hexdigest(),
-                       'X-Object-Manifest': manifest}
-            swift_conn.put_object(container, obj_name, image_data,
-                    content_length=content_length,
-                    chunk_size=large_object_chunk_size, headers=headers)
+        checksum = hashlib.md5()
+        image_size = os.path.getsize(image_data)
+
+        checksum = hashlib.md5()
+        while True:
+            chunk_size = large_object_chunk_size
+            left = image_size - combined_chunks_size
+            if left == 0:
+                break
+            if chunk_size > left:
+                chunk_size = left
+            reader = ChunkReader(image_file, checksum)
+            reader.read(chunk_size)
+            combined_chunks_size += chunk_size
+
+        # Now we write the object manifest and return the
+        # manifest's etag...
+        manifest = "%s/%s" % (container, obj_name)
+        headers = {'ETag': hashlib.md5("").hexdigest(),
+                   'X-Object-Manifest': manifest}
+        swift_conn.put_object(container, obj_name, image_data,
+                content_length=image_size,
+                chunk_size=large_object_chunk_size, headers=headers)
 
         obj_etag = checksum.hexdigest()
 
@@ -178,11 +189,11 @@ def _upload_tarball(staging_path, image_id, image_size, **params):
         raise Exception(msg)
 
 
-def upload_vhd(session, vdi_uuids, sr_path, image_id, image_size, **params):
+def upload_vhd(session, vdi_uuids, sr_path, image_id, **params):
     staging_path = utils.make_staging_area(sr_path)
     try:
         utils.prepare_staging_area(sr_path, staging_path, vdi_uuids)
-        _upload_tarball(staging_path, image_id, image_size, params)
+        _upload_tarball(staging_path, image_id, params)
     finally:
         utils.cleanup_staging_area(staging_path)
 
