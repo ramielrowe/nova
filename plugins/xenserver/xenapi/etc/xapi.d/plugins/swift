@@ -43,6 +43,13 @@ class ChunkReader(object):
         result = self.file_obj.read(num_bytes)
         self.checksum.update(result)
 
+def hashfile(afile, hasher, blocksize=65536):
+    buf = afile.read(blocksize)
+    while len(buf) > 0:
+        hasher.update(buf)
+        buf = afile.read(blocksize)
+    return hasher.hexdigest()
+
 
 def create_container_if_missing(container, swift_conn, create_container_on_put):
     """
@@ -78,7 +85,7 @@ def create_container_if_missing(container, swift_conn, create_container_on_put):
 
 
 def make_swift_connection(enable_snet, auth_version, auth_url, user, key,
-                           storage_url=None):
+                          storage_url=None):
     """
     Creates a connection using the Swift client library.
 
@@ -94,9 +101,9 @@ def make_swift_connection(enable_snet, auth_version, auth_url, user, key,
     full_auth_url = (auth_url if not auth_url or auth_url.endswith('/')
                      else auth_url + '/')
     logging.info(_("Creating Swift connection with "
-                "(auth_address=%(full_auth_url)s, user=%(user)s, "
-                "snet=%(snet)s, auth_version=%(auth_version)s)") %
-              locals())
+                   "(auth_address=%(full_auth_url)s, user=%(user)s, "
+                   "snet=%(snet)s, auth_version=%(auth_version)s)") %
+                 locals())
     tenant_name = None
     if auth_version == '2':
         tenant_user = user.split(':')
@@ -107,7 +114,7 @@ def make_swift_connection(enable_snet, auth_version, auth_url, user, key,
             raise Exception(reason)
         (tenant_name, user) = tenant_user
     return swift_client.Connection(
-            full_auth_url, user, key, snet=snet, auth_version=auth_version)
+        full_auth_url, user, key, snet=snet, auth_version=auth_version)
 
 
 def _upload_tarball(staging_path, image_id, **params):
@@ -120,12 +127,12 @@ def _upload_tarball(staging_path, image_id, **params):
     user = params['swift_store_user']
     key = params['swift_store_key']
     auth_version = params['swift_store_auth_version']
-    swift_container =  params['swift_store_container']
+    container =  params['swift_store_container']
     large_object_size = params['swift_store_large_object_size']
     large_object_chunk_size = params['swift_store_large_object_chunk_size']
     create_container_on_put = params['swift_store_create_container_on_put']
     full_auth_address = params['full_auth_address']
-    storage_url = params['storage_url']
+    storage_url = None
     location_uri = params['location_uri']
 
     #TODO(isethi): Currently we create a path for swift file object and store
@@ -136,48 +143,29 @@ def _upload_tarball(staging_path, image_id, **params):
     #              swift chunk size.
     swift_fileobj_path = staging_path + '_swift'
     utils.make_dir(swift_fileobj_path)
-    image_data = swift_fileobj_path + '/' + image_id
-
-    with open(image_data, 'w') as f:
+    image_path = swift_fileobj_path + '/' + image_id
+    with open(image_path, 'w') as f:
         utils.create_tarball(f, staging_path)
+    with open(image_path, 'r') as f:
+        expected_etag = hashfile(f, hashlib.md5())
 
     swift_conn = make_swift_connection(enable_snet, auth_version,
-                                      full_auth_address, user, key,
-                                      storage_url=storage_url)
+        full_auth_address, user, key,
+        storage_url=storage_url)
 
     obj_name = str(image_id)
 
-    create_container_if_missing(swift_container, swift_conn,
-                                create_container_on_put)
+    create_container_if_missing(container, swift_conn,
+        create_container_on_put)
 
     try:
-        checksum = hashlib.md5()
-        image_size = os.path.getsize(image_data)
-
-        checksum = hashlib.md5()
-        while True:
-            chunk_size = large_object_chunk_size
-            left = image_size - combined_chunks_size
-            if left == 0:
-                break
-            if chunk_size > left:
-                chunk_size = left
-            reader = ChunkReader(image_file, checksum)
-            reader.read(chunk_size)
-            combined_chunks_size += chunk_size
 
         # Now we write the object manifest and return the
         # manifest's etag...
         manifest = "%s/%s" % (container, obj_name)
-        headers = {'ETag': hashlib.md5("").hexdigest(),
-                   'X-Object-Manifest': manifest}
-        swift_conn.put_object(container, obj_name, image_data,
-                content_length=image_size,
-                chunk_size=large_object_chunk_size, headers=headers)
-
-        obj_etag = checksum.hexdigest()
-
-        return (image_size, obj_etag)
+        headers = {'X-Object-Manifest': manifest}
+        etag = swift_conn.put_object(container, obj_name, open(image_path, 'r'),
+            chunk_size=large_object_chunk_size, headers=headers)
     except swift_client.ClientException, e:
         if e.http_status == httplib.CONFLICT:
             msg = (_("Swift already has an image at"
@@ -191,12 +179,13 @@ def _upload_tarball(staging_path, image_id, **params):
 
 def upload_vhd(session, vdi_uuids, sr_path, image_id, **params):
     staging_path = utils.make_staging_area(sr_path)
+    print staging_path
     try:
         utils.prepare_staging_area(sr_path, staging_path, vdi_uuids)
-        _upload_tarball(staging_path, image_id, params)
+        _upload_tarball(staging_path, image_id, **params)
     finally:
-        utils.cleanup_staging_area(staging_path)
-
+        pass
+        #utils.cleanup_staging_area(staging_path)
 
 if __name__ == '__main__':
     utils.register_plugin_calls(upload_vhd)
