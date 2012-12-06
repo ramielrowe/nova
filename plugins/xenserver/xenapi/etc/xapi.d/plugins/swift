@@ -157,6 +157,7 @@ def _upload_tarball(staging_path, image_id, **params):
     try:
         with open(tar_path, 'r') as file:
             local_md5 = hashfile(file, hashlib.md5())
+            file.seek(0)
             swift_md5 = swift_conn.put_object(container, obj_name, file,
                                               headers=headers)
     except swift_client.ClientException, e:
