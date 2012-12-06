@@ -928,7 +928,8 @@ class Connection(object):
 
         def _default_reset(*args, **kwargs):
             raise ClientException('put_object(%r, %r, ...) failure and no '
-                                  'ability to reset contents for reupload.' % (container, obj))
+                                  'ability to reset contents for reupload.'
+                                  % (container, obj))
 
         reset_func = _default_reset
         tell = getattr(contents, 'tell', None)
@@ -951,5 +952,5 @@ class Connection(object):
         """Wrapper for :func:`delete_object`"""
         return self._retry(None, delete_object, container, obj)
 
-        # End inclusion of swift.common.client
-        # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# End inclusion of swift.common.client
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
