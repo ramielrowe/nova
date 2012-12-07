@@ -17,7 +17,8 @@ kwargs = {
     'swift_store_key': 'm5XWk8E',
     'swift_store_auth_version': '1',
     'swift_store_container': 'images',
-    'swift_store_large_object_chunk_size': 65536,
+    'swift_store_large_object_size': 5192,
+    'swift_store_large_object_chunk_size': 4096,
     'swift_store_create_container_on_put': True,
     'full_auth_address': 'https://auth.dfw1.swift.racklabs.com:443/auth/v1.0',
     }

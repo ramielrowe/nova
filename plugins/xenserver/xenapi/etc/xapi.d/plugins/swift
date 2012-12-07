@@ -34,6 +34,10 @@ import swift_client
 
 configure_logging('swift')
 
+MEGABYTES_TO_BYTES_FACTOR = 1024 * 1024
+FIVE_GIGABYTES = 5120 * MEGABYTES_TO_BYTES_FACTOR
+TWO_HUNDRED_MEGABYTES = 200 * MEGABYTES_TO_BYTES_FACTOR
+
 
 class ChunkReader(object):
     def __init__(self, fd, checksum, total):
@@ -50,13 +54,6 @@ class ChunkReader(object):
         self.bytes_read += len(result)
         self.checksum.update(result)
         return result
-
-def hashfile(afile, hasher, blocksize=65536):
-    buf = afile.read(blocksize)
-    while len(buf) > 0:
-        hasher.update(buf)
-        buf = afile.read(blocksize)
-    return hasher.hexdigest()
 
 
 def create_container_if_missing(container, swift_conn, create_container_on_put):
@@ -88,7 +85,7 @@ def create_container_if_missing(container, swift_conn, create_container_on_put):
                 logging.error(msg)
                 raise Exception(msg)
         else:
-            msg("ERROR")
+            msg = "ERROR"
             raise Exception(msg)
 
 
@@ -125,7 +122,8 @@ def make_swift_connection(enable_snet, auth_version, auth_url, user, key,
         full_auth_url, user, key, snet=snet, auth_version=auth_version)
 
 def _upload_tarball_to_swift(swift_conn, obj_name, tar_file, tar_size=0,
-                             large_object_size=5120, large_object_chunk_size=200,
+                             large_object_size=FIVE_GIGABYTES,
+                             large_object_chunk_size=TWO_HUNDRED_MEGABYTES,
                              container='images'):
     if tar_size > 0 and tar_size < large_object_size:
         # Image size is known, and is less than large_object_size.
@@ -219,7 +217,10 @@ def _upload_tarball(staging_path, image_id, **params):
     create_container_on_put = params['swift_store_create_container_on_put']
     container =  params['swift_store_container']
     large_object_size = params['swift_store_large_object_size']
+    large_object_size_bytes = large_object_size * MEGABYTES_TO_BYTES_FACTOR
     large_object_chunk_size = params['swift_store_large_object_chunk_size']
+    large_object__chunk_size_bytes = large_object_chunk_size * \
+                                     MEGABYTES_TO_BYTES_FACTOR
 
     obj_name = str(image_id)
 
@@ -242,8 +243,8 @@ def _upload_tarball(staging_path, image_id, **params):
         create_container_on_put)
     with open(tar_path, 'r') as tar_file:
         return _upload_tarball_to_swift(swift_conn, obj_name, tar_file,
-            large_object_size=large_object_size,
-            large_object_chunk_size=large_object_chunk_size,
+            large_object_size=large_object_size_bytes,
+            large_object_chunk_size=large_object__chunk_size_bytes,
             container='images')
 
 
