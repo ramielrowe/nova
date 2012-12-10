@@ -56,7 +56,7 @@ class ChunkReader(object):
         return result
 
 
-def create_container_if_missing(container, swift_conn, create_container_on_put):
+def create_container_if_missing(swift_conn, container):
     """
     Creates a missing container in Swift if the
     ``swift_store_create_container_on_put`` option is set.
@@ -68,20 +68,11 @@ def create_container_if_missing(container, swift_conn, create_container_on_put):
         swift_conn.head_container(container)
     except swift_client.ClientException, e:
         if e.http_status == httplib.NOT_FOUND:
-            if create_container_on_put:
-                try:
-                    swift_conn.put_container(container)
-                except swift_client.ClientException, e:
-                    msg = ("Failed to add container to Swift.\n"
-                           "Got error from Swift: %(e)s" % locals())
-                    logging.error(msg)
-                    raise Exception(msg)
-            else:
-                msg = ("The container %(container)s does not exist in "
-                       "Swift. Please set the "
-                       "swift_store_create_container_on_put option"
-                       "to add container to Swift automatically." %
-                       locals())
+            try:
+                swift_conn.put_container(container)
+            except swift_client.ClientException, e:
+                msg = ("Failed to add container to Swift.\n"
+                       "Got error from Swift: %(e)s" % locals())
                 logging.error(msg)
                 raise Exception(msg)
         else:
@@ -128,9 +119,8 @@ def _upload_tarball_to_swift(swift_conn, obj_name, tar_file, tar_size=0,
     if tar_size > 0 and tar_size < large_object_size:
         # Image size is known, and is less than large_object_size.
         # Send to Swift with regular PUT.
-        obj_etag = swift_conn.put_object(container, obj_name,
-            tar_file,
-            content_length=tar_size)
+        obj_etag = swift_conn.put_object(container, obj_name, tar_file,
+                                         content_length=tar_size)
     else:
         # Write the image into Swift in chunks.
         chunk_id = 1
@@ -235,15 +225,17 @@ def _upload_tarball(staging_path, image_id, **params):
     tar_path = '%s/%s' % (swift_fileobj_path, obj_name)
     with open(tar_path, 'w') as file:
         utils.create_tarball(file, staging_path)
+    tar_size = os.path.getsize(tar_path)
 
     swift_conn = make_swift_connection(enable_snet, auth_version,
         full_auth_address, user, key)
 
-    create_container_if_missing(container, swift_conn,
-        create_container_on_put)
+    if create_container_on_put:
+        create_container_if_missing(swift_conn, container)
+
     with open(tar_path, 'r') as tar_file:
         return _upload_tarball_to_swift(swift_conn, obj_name, tar_file,
-            large_object_size=large_object_size_bytes,
+            tar_size=tar_size, large_object_size=large_object_size_bytes,
             large_object_chunk_size=large_object__chunk_size_bytes,
             container='images')
 
