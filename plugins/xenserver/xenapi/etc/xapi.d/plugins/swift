@@ -80,8 +80,8 @@ def create_container_if_missing(swift_conn, container):
             raise Exception(msg)
 
 
-def make_swift_connection(enable_snet, auth_version, auth_url, user, key,
-                          storage_url=None):
+def make_swift_connection(self, snet, auth_url, auth_version, user, key,
+                          region=None, storage_url=None, token=None):
     """
     Creates a connection using the Swift client library.
 
@@ -91,17 +91,16 @@ def make_swift_connection(enable_snet, auth_version, auth_url, user, key,
     :param key  A string containing the key/password for the connection.
     :param region   A string containing the swift endpoint region
     :param storage_url A string containing the storage URL.
+    :param token A string containing the token
     """
-    snet = enable_snet
-    auth_version = auth_version
     full_auth_url = (auth_url if not auth_url or auth_url.endswith('/')
                      else auth_url + '/')
-    logging.info("Creating Swift connection with "
-                 "(auth_address=%(full_auth_url)s, user=%(user)s, "
-                 "snet=%(snet)s, auth_version=%(auth_version)s)" %
-                 locals())
+    logging.debug("Creating Swift connection with "
+                  "(auth_address=%(full_auth_url)s, user=%(user)s, "
+                  "snet=%(snet)s, auth_version=%(auth_version)s)" %
+                  locals())
     tenant_name = None
-    if auth_version == '2':
+    if self.auth_version == '2':
         tenant_user = user.split(':')
         if len(tenant_user) != 2:
             reason = ("Badly formed tenant:user '%(tenant_user)s' in "
@@ -109,8 +108,18 @@ def make_swift_connection(enable_snet, auth_version, auth_url, user, key,
             logging.error(reason)
             raise Exception(reason)
         (tenant_name, user) = tenant_user
-    return swift_client.Connection(
-        full_auth_url, user, key, snet=snet, auth_version=auth_version)
+
+    if token is not None:
+        #NOTE: multi-tenant supports v2 auth only
+        return swift_client.Connection(
+            None, user, None, preauthurl=storage_url, preauthtoken=token,
+            snet=snet, auth_version='2')
+    else:
+        os_options = {}
+        if region:
+            os_options['region_name'] = region
+        return swift_client.Connection(
+            full_auth_url, user, key, snet=snet, auth_version=auth_version)
 
 def _upload_tarball_to_swift(swift_conn, obj_name, tar_file, tar_size=0,
                              large_object_size=FIVE_GIGABYTES,
