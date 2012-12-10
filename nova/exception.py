@@ -191,6 +191,10 @@ class GlanceConnectionFailed(NovaException):
         "%(reason)s")
 
 
+class RegionAmbiguity(NovaException):
+    message = _("Ambigous endpoint for region: %(region)")
+
+
 class NotAuthorized(NovaException):
     message = _("Not authorized.")
     code = 403
@@ -629,6 +633,10 @@ class CertificateNotFound(NotFound):
 
 class ServiceNotFound(NotFound):
     message = _("Service %(service_id)s could not be found.")
+
+
+class NoServiceEndpoint(NotFound):
+    message = _("Service Catalog does not contain %(service_id) endpoint.")
 
 
 class HostNotFound(NotFound):
