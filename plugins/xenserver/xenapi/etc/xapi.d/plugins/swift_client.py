@@ -26,10 +26,11 @@ from urlparse import urlparse
 from urlparse import urlunparse
 
 try:
-    from eventlet.green.httplib import HTTPException, HTTPSConnection
+    from eventlet.green.httplib import HTTPSConnection
+    from eventlet.green.httplib import HTTPException
 except ImportError:
-    from httplib import HTTPException, HTTPSConnection
-
+    from httplib import HTTPSConnection
+    from httplib import HTTPException
 try:
     from eventlet import sleep
 except ImportError:
