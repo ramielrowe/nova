@@ -89,6 +89,14 @@
             "updated": "%(timestamp)s"
         },
         {
+            "alias": "OS-INST-USG",
+            "description": "%(text)s",
+            "links": [],
+            "name": "InstanceUsage",
+            "namespace": "http://docs.openstack.org/compute/ext/instance_usage/api/v1.1",
+            "updated": "%(timestamp)s"
+        },
+        {
             "alias": "OS-SCH-HNT",
             "description": "%(text)s",
             "links": [],
