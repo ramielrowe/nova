@@ -174,9 +174,9 @@ wrap_check_security_groups_policy = policy_decorator(
                                     scope='compute:security_groups')
 
 
-def check_policy(context, action, target, scope='compute'):
+def check_policy(context, action, target, scope='compute', do_raise=True):
     _action = '%s:%s' % (scope, action)
-    nova.policy.enforce(context, _action, target)
+    return nova.policy.enforce(context, _action, target, do_raise=do_raise)
 
 
 class API(base.Base):
@@ -1346,6 +1346,10 @@ class API(base.Base):
 
     def get(self, context, instance_id):
         """Get a single instance with the given instance_id."""
+        if check_policy(context, 'get_show_deleted_instances',
+                        {'id': instance_id}, do_raise=False):
+            context.read_deleted = 'yes'
+
         # NOTE(ameade): we still need to support integer ids for ec2
         try:
             if uuidutils.is_uuid_like(instance_id):

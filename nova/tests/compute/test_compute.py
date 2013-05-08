@@ -7807,7 +7807,7 @@ class ComputePolicyTestCase(BaseTestCase):
 
     def test_actions_are_prefixed(self):
         self.mox.StubOutWithMock(policy, 'enforce')
-        nova.policy.enforce(self.context, 'compute:reboot', {})
+        nova.policy.enforce(self.context, 'compute:reboot', {}, do_raise=True)
         self.mox.ReplayAll()
         compute_api.check_policy(self.context, 'reboot', {})
 
@@ -7870,6 +7870,62 @@ class ComputePolicyTestCase(BaseTestCase):
 
         self.assertRaises(exception.PolicyNotAuthorized,
                           self.compute_api.get, self.context, instance['uuid'])
+
+    def test_get_show_deleted_instances_off_does_not_raise(self):
+        exp_instance = self._create_fake_instance()
+        expected = dict(exp_instance.iteritems())
+        read_deleted = {'value': None}
+
+        rules = {
+            "compute:get": [],
+            "compute:get_show_deleted_instances": [["false:false"]],
+        }
+        self.policy.set_rules(rules)
+
+        def fake_db_get(_context, _instance_uuid):
+            read_deleted['value'] = _context.read_deleted
+            return exp_instance
+
+        self.stubs.Set(db, 'instance_get_by_uuid', fake_db_get)
+
+        instance = self.compute_api.get(self.context, exp_instance['uuid'])
+        self.assertEqual('no', read_deleted['value'])
+        self.assertEqual(expected, instance)
+
+    def test_get_show_deleted_instances_off_returns_not_found(self):
+        instance = self._create_fake_instance(params={'host': None})
+        db.instance_destroy(self.context, instance['uuid'])
+
+        rules = {
+            "compute:get": [],
+            "compute:get_show_deleted_instances": [["false:false"]],
+        }
+        self.policy.set_rules(rules)
+
+        self.assertRaises(exception.InstanceNotFound,
+                          self.compute_api.get, self.context, instance['uuid'])
+
+    def test_get_show_deleted_instances_on_returns_instance(self):
+        exp_instance = self._create_fake_instance(params={'host': None})
+        expected = dict(exp_instance.iteritems())
+        db.instance_destroy(self.context, exp_instance['uuid'])
+        read_deleted = {'value': None}
+
+        rules = {
+            "compute:get": [],
+            "compute:get_show_deleted_instances": [],
+        }
+        self.policy.set_rules(rules)
+
+        def fake_db_get(_context, _instance_uuid):
+            read_deleted['value'] = _context.read_deleted
+            return exp_instance
+
+        self.stubs.Set(db, 'instance_get_by_uuid', fake_db_get)
+
+        instance = self.compute_api.get(self.context, exp_instance['uuid'])
+        self.assertEqual('yes', read_deleted['value'])
+        self.assertEqual(expected, instance)
 
     def test_get_all_fail(self):
         rules = {
