@@ -44,6 +44,7 @@
     "compute_extension:evacuate": "rule:admin_api",
     "compute_extension:extended_server_attributes": "rule:admin_api",
     "compute_extension:extended_status": "",
+    "compute_extension:instance_usage": "",
     "compute_extension:extended_availability_zone": "",
     "compute_extension:extended_ips": "",
     "compute_extension:extended_ips_mac": "",
