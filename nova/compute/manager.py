@@ -2939,7 +2939,8 @@ class ComputeManager(manager.SchedulerDependentManager):
             finally:
                 extra_usage_info = dict(
                         new_instance_type=instance_type['name'],
-                        new_instance_type_id=instance_type['id'])
+                        new_instance_type_id=instance_type['id'],
+                        new_instance_flavor_id=instance_type['flavorid'])
 
                 self._notify_about_instance_usage(
                     context, instance, "resize.prep.end",
