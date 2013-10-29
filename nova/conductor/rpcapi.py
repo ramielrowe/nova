@@ -117,6 +117,7 @@ class ConductorAPI(rpcclient.RpcProxy):
 
     1.59 - Remove instance_info_cache_update()
     1.60 - Remove aggregate_metadata_add() and aggregate_metadata_delete()
+    1.61 - Return deleted instance from instance_destroy()
     """
 
     BASE_RPC_API_VERSION = '1.0'
@@ -294,9 +295,12 @@ class ConductorAPI(rpcclient.RpcProxy):
                           host=host)
 
     def instance_destroy(self, context, instance):
+        if not self.client.can_send_version('1.61'):
+            raise rpc_common.RpcVersionCapError(version_cap=self.version_cap)
         instance_p = jsonutils.to_primitive(instance)
-        cctxt = self.client.prepare(version='1.16')
-        cctxt.call(context, 'instance_destroy', instance=instance_p)
+        cctxt = self.client.prepare(version='1.61')
+        return cctxt.call(context, 'instance_destroy', instance=instance_p)
+
 
     def instance_info_cache_delete(self, context, instance):
         instance_p = jsonutils.to_primitive(instance)
