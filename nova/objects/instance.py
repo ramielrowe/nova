@@ -311,7 +311,9 @@ class Instance(base.NovaPersistentObject, base.NovaObject):
             constraint = None
 
         try:
-            db.instance_destroy(context, self.uuid, constraint=constraint)
+            db_inst = db.instance_destroy(context, self.uuid,
+                                          constraint=constraint)
+            self._from_db_object(context, self, db_inst)
         except exception.ConstraintNotMet:
             raise exception.ObjectActionError(action='destroy',
                                               reason='host changed')
