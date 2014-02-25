@@ -229,12 +229,14 @@ class _DiskImage(object):
 
     tmp_prefix = 'openstack-disk-mount-tmp'
 
-    def __init__(self, image, partition=None, use_cow=False, mount_dir=None):
+    def __init__(self, image, partition=None, use_cow=False, mount_dir=None,
+                 use_noop=False):
         # These passed to each mounter
         self.image = image
         self.partition = partition
         self.mount_dir = mount_dir
         self.use_cow = use_cow
+        self.use_noop = use_noop
 
         # Internal
         self._mkdir = False
@@ -295,7 +297,8 @@ class _DiskImage(object):
         mounter = mount.Mount.instance_for_format(self.image,
                                                   self.mount_dir,
                                                   self.partition,
-                                                  imgfmt)
+                                                  imgfmt,
+                                                  use_noop=self.use_noop)
         if mounter.do_mount():
             self._mounter = mounter
             return self._mounter.device
@@ -369,7 +372,7 @@ def inject_data(image, key=None, net=None, metadata=None, admin_password=None,
         fs.teardown()
 
 
-def setup_container(image, container_dir, use_cow=False):
+def setup_container(image, container_dir, use_cow=False, use_noop=False):
     """Setup the LXC container.
 
     It will mount the loopback image to the container directory in order
@@ -377,7 +380,8 @@ def setup_container(image, container_dir, use_cow=False):
 
     Returns path of image device which is mounted to the container directory.
     """
-    img = _DiskImage(image=image, use_cow=use_cow, mount_dir=container_dir)
+    img = _DiskImage(image=image, use_cow=use_cow, mount_dir=container_dir,
+                     use_noop=use_noop)
     dev = img.mount()
     if dev is None:
         LOG.error(_("Failed to mount container filesystem '%(image)s' "
@@ -405,10 +409,13 @@ def teardown_container(container_dir, container_root_device=None):
                 LOG.debug(_("Release loop device %s"), container_root_device)
                 utils.execute('losetup', '--detach', container_root_device,
                               run_as_root=True, attempts=3)
-            else:
+            elif 'nbd' in container_root_device:
                 LOG.debug(_('Release nbd device %s'), container_root_device)
                 utils.execute('qemu-nbd', '-d', container_root_device,
                               run_as_root=True)
+            elif 'mapper' in container_root_device:
+                msg = _('No release necessary for lvm device %s')
+                LOG.debug(msg % container_root_device)
     except Exception as exn:
         LOG.exception(_('Failed to teardown container filesystem: %s'), exn)
 
