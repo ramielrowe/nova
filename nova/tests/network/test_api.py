@@ -380,6 +380,12 @@ class TestUpdateInstanceCache(test.TestCase):
         db_mock.assert_called_once_with(self.context, self.instance['uuid'],
                                         {'network_info': '[]'})
 
+    def test_update_nw_info_has_hook(self, db_mock, api_mock):
+        func = base_api.update_instance_cache_with_nw_info
+
+        self.assertTrue(hasattr(func, '__hook_name__'))
+        self.assertEqual(func.__hook_name__, 'instance_network_info')
+
     def test_decorator_return_object(self, db_mock, api_mock):
         @base_api.refresh_cache
         def func(self, context, instance):

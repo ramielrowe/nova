@@ -85,6 +85,9 @@ class HookTestCase(test.NoDBTestCase):
         self.assertEqual(42, self._hooked(1))
 
         mgr = hooks._HOOKS['test_hook']
+
+        self.assertTrue(hasattr(self._hooked, '__hook_name__'))
+        self.assertEqual(self._hooked.__hook_name__, 'test_hook')
         self.assertEqual(2, len(mgr.extensions))
         self.assertEqual(SampleHookA, mgr.extensions[0].plugin)
         self.assertEqual(SampleHookB, mgr.extensions[1].plugin)
@@ -110,6 +113,8 @@ class HookTestCaseWithFunction(HookTestCase):
         self.assertEqual(42, self._hooked(1))
         mgr = hooks._HOOKS['function_hook']
 
+        self.assertTrue(hasattr(self._hooked, '__hook_name__'))
+        self.assertEqual(self._hooked.__hook_name__, 'function_hook')
         self.assertEqual(1, len(mgr.extensions))
         self.assertEqual(SampleHookC, mgr.extensions[0].plugin)
 
