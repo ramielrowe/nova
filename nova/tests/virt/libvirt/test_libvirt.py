@@ -948,6 +948,29 @@ class LibvirtConnTestCase(test.TestCase):
         self.assertIsInstance(cfg.devices[7],
                               vconfig.LibvirtConfigGuestVideo)
 
+    def test_get_guest_config_lxc(self):
+        self.flags(virt_type='lxc', group='libvirt')
+        conn = libvirt_driver.LibvirtDriver(fake.FakeVirtAPI(), True)
+        instance_ref = db.instance_create(self.context, self.test_instance)
+
+        cfg = conn.get_guest_config(instance_ref,
+                                    _fake_network_info(self.stubs, 1),
+                                    None, {'mapping': {}})
+        self.assertEqual(instance_ref["uuid"], cfg.uuid)
+        self.assertEqual(2 * units.Mi, cfg.memory)
+        self.assertEqual(1, cfg.vcpus)
+        self.assertEqual(vm_mode.EXE, cfg.os_type)
+        self.assertEqual("/sbin/init", cfg.os_init_path)
+        self.assertEqual("console=tty0 console=ttyS0", cfg.os_cmdline)
+        self.assertIsNone(cfg.os_root)
+        self.assertEqual(3, len(cfg.devices))
+        self.assertIsInstance(cfg.devices[0],
+                              vconfig.LibvirtConfigGuestFilesys)
+        self.assertIsInstance(cfg.devices[1],
+                              vconfig.LibvirtConfigGuestInterface)
+        self.assertIsInstance(cfg.devices[2],
+                              vconfig.LibvirtConfigGuestConsole)
+
     def test_get_guest_config_clock(self):
         self.flags(virt_type='kvm', group='libvirt')
         conn = libvirt_driver.LibvirtDriver(fake.FakeVirtAPI(), True)
@@ -6560,6 +6583,96 @@ class LibvirtConnTestCase(test.TestCase):
         dom_mock.info.assert_called_once_with()
         dom_mock.ID.assert_called_once_with()
         lookup_mock.assert_called_once_with(instance['name'])
+
+    @mock.patch.object(fake_libvirt_utils, 'get_instance_path')
+    def test_create_domain(self, mock_get_inst_path):
+        conn = libvirt_driver.LibvirtDriver(fake.FakeVirtAPI(), True)
+        mock_domain = mock.MagicMock()
+        mock_instance = mock.MagicMock()
+        mock_get_inst_path.return_value = '/tmp/'
+
+        domain = conn._create_domain(domain=mock_domain,
+                                     instance=mock_instance)
+
+        self.assertEqual(mock_domain, domain)
+        mock_get_inst_path.assertHasCalls([mock.call(mock_instance)])
+        mock_domain.createWithFlags.assertHasCalls([mock.call(0)])
+
+    @mock.patch('nova.virt.disk.api.clean_lxc_namespace')
+    @mock.patch('nova.virt.libvirt.driver.LibvirtDriver.get_info')
+    @mock.patch('nova.virt.disk.api.setup_container')
+    @mock.patch('nova.openstack.common.fileutils.ensure_tree')
+    @mock.patch.object(fake_libvirt_utils, 'get_instance_path')
+    def test_create_domain_lxc(self, mock_get_inst_path, mock_ensure_tree,
+                           mock_setup_container, mock_get_info, mock_clean):
+        self.flags(virt_type='lxc', group='libvirt')
+        conn = libvirt_driver.LibvirtDriver(fake.FakeVirtAPI(), True)
+        mock_domain = mock.MagicMock()
+        mock_instance = mock.MagicMock()
+        mock_get_inst_path.return_value = '/tmp/'
+        mock_image_backend = mock.MagicMock()
+        conn.image_backend = mock_image_backend
+        mock_image = mock.MagicMock()
+        mock_image.path = '/tmp/test.img'
+        conn.image_backend.image.return_value = mock_image
+        mock_setup_container.return_value = '/dev/nbd0'
+        mock_get_info.return_value = {'state': power_state.RUNNING}
+
+        domain = conn._create_domain(domain=mock_domain,
+                                     instance=mock_instance)
+
+        self.assertEqual(mock_domain, domain)
+        self.assertEqual('/dev/nbd0', mock_instance.root_device_name)
+        mock_instance.save.assertHasCalls([mock.call()])
+        mock_domain.createWithFlags.assertHasCalls([mock.call(0)])
+        mock_get_inst_path.assertHasCalls([mock.call(mock_instance)])
+        mock_ensure_tree.assertHasCalls([mock.call('/tmp/rootfs')])
+        conn.image_backend.assertHasCalls([mock.call(mock_instance, 'disk')])
+        setup_container_call = mock.call('/tmp/test.img',
+                                         container_dir='/tmp/rootfs',
+                                         use_cow=CONF.use_cow_images)
+        mock_setup_container.assertHasCalls([setup_container_call])
+        mock_get_info.assertHasCalls([mock.call(mock_instance)])
+        mock_clean.assertHasCalls([mock.call(container_dir='/tmp/rootfs')])
+
+    @mock.patch('nova.virt.disk.api.teardown_container')
+    @mock.patch('nova.virt.libvirt.driver.LibvirtDriver.get_info')
+    @mock.patch('nova.virt.disk.api.setup_container')
+    @mock.patch('nova.openstack.common.fileutils.ensure_tree')
+    @mock.patch.object(fake_libvirt_utils, 'get_instance_path')
+    def test_create_domain_lxc_not_running(self, mock_get_inst_path,
+                                           mock_ensure_tree,
+                                           mock_setup_container,
+                                           mock_get_info, mock_teardown):
+        self.flags(virt_type='lxc', group='libvirt')
+        conn = libvirt_driver.LibvirtDriver(fake.FakeVirtAPI(), True)
+        mock_domain = mock.MagicMock()
+        mock_instance = mock.MagicMock()
+        mock_get_inst_path.return_value = '/tmp/'
+        mock_image_backend = mock.MagicMock()
+        conn.image_backend = mock_image_backend
+        mock_image = mock.MagicMock()
+        mock_image.path = '/tmp/test.img'
+        conn.image_backend.image.return_value = mock_image
+        mock_setup_container.return_value = '/dev/nbd0'
+        mock_get_info.return_value = {'state': power_state.SHUTDOWN}
+
+        domain = conn._create_domain(domain=mock_domain,
+                                     instance=mock_instance)
+
+        self.assertEqual(mock_domain, domain)
+        self.assertEqual('/dev/nbd0', mock_instance.root_device_name)
+        mock_instance.save.assertHasCalls([mock.call()])
+        mock_domain.createWithFlags.assertHasCalls([mock.call(0)])
+        mock_get_inst_path.assertHasCalls([mock.call(mock_instance)])
+        mock_ensure_tree.assertHasCalls([mock.call('/tmp/rootfs')])
+        conn.image_backend.assertHasCalls([mock.call(mock_instance, 'disk')])
+        setup_container_call = mock.call('/tmp/test.img',
+                                         container_dir='/tmp/rootfs',
+                                         use_cow=CONF.use_cow_images)
+        mock_setup_container.assertHasCalls([setup_container_call])
+        mock_get_info.assertHasCalls([mock.call(mock_instance)])
+        mock_teardown.assertHasCalls([mock.call(container_dir='/tmp/rootfs')])
 
     def test_create_domain_define_xml_fails(self):
         """Tests that the xml is logged when defining the domain fails."""
