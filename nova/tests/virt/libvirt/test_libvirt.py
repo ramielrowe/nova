@@ -7971,11 +7971,44 @@ disk size: 4.4M''', ''))
         finally:
             os.unlink(dst_path)
 
-    def test_chown(self):
-        self.mox.StubOutWithMock(utils, 'execute')
-        utils.execute('chown', 'soren', '/some/path', run_as_root=True)
-        self.mox.ReplayAll()
+    @mock.patch.object(utils, 'execute')
+    def test_chown(self, mock_execute):
         libvirt_utils.chown('/some/path', 'soren')
+        execute_call = mock.call('chown', 'soren', '/some/path',
+                                 run_as_root=True)
+        mock_execute.assertHasCalls([execute_call])
+
+    @mock.patch.object(utils, 'execute')
+    def test_chown_recursive(self, mock_execute):
+        libvirt_utils.chown('/some/path', 'soren', recursive=True)
+        execute_call = mock.call('chown', '-R', 'soren', '/some/path',
+                                 run_as_root=True)
+        mock_execute.assertHasCalls([execute_call])
+
+    @mock.patch.object(utils, 'execute')
+    def test_chown_with_group(self, mock_execute):
+        libvirt_utils.chown('/some/path', 0, 0, recursive=True)
+        execute_call = mock.call('chown', '-R', '0:0', '/some/path',
+                                 run_as_root=True)
+        mock_execute.assertHasCalls([execute_call])
+
+    @mock.patch.object(utils, 'execute')
+    def test_chown_for_id_maps(self, mock_execute):
+        libvirt_utils.chown_for_id_maps('/some/path',
+                                        [(0, 500, 100)],
+                                        [(0, 500, 100)])
+        execute_call = mock.call('chown', '-R', '500:500', '/some/path',
+                                 run_as_root=True)
+        mock_execute.assertHasCalls([execute_call])
+
+    @mock.patch.object(utils, 'execute')
+    def test_chown_for_id_maps_complex(self, mock_execute):
+        uid_maps = [(101, 2000, 100), (0, 1000, 100)]
+        gid_maps = [(101, 2000, 100), (0, 1000, 100)]
+        libvirt_utils.chown_for_id_maps('/some/path', uid_maps, gid_maps)
+        execute_call = mock.call('chown', '-R', '1000:1000', '/some/path',
+                                 run_as_root=True)
+        mock_execute.assertHasCalls([execute_call])
 
     def _do_test_extract_snapshot(self, dest_format='raw', out_format='raw'):
         self.mox.StubOutWithMock(utils, 'execute')

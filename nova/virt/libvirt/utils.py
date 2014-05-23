@@ -537,13 +537,42 @@ def write_to_file(path, contents, umask=None):
             os.umask(saved_umask)
 
 
-def chown(path, owner):
+def chown(path, owner, group=None, recursive=False):
     """Change ownership of file or directory
 
     :param path: File or directory whose ownership to change
-    :param owner: Desired new owner (given as uid or username)
+    :param owner: Desired new owner user (given as uid or username)
+    :param group: Desired new owner group (given as gid or group name)
+    :param recursive: Whether or not to perform a recursive chown
     """
-    execute('chown', owner, path, run_as_root=True)
+    if group:
+        owner = "%s:%s" % (owner, group)
+    if recursive:
+        execute('chown', '-R', owner, path, run_as_root=True)
+    else:
+        execute('chown', owner, path, run_as_root=True)
+
+
+def _find_root_id(id_maps):
+    for start, target, count in id_maps:
+        if start == '0':
+            return target
+    return '0'
+
+
+def chown_for_id_maps(path, uid_maps, gid_maps):
+    """Change ownership of file or directory for an id mapped
+    environment
+
+    :param path: File or directory whose ownership to change
+    :param uid_maps: List of 3-tuples containing uid map ranges
+    :param gid_maps: List of 3-tuples container gid map ranges
+    """
+    root_uid = _find_root_id(uid_maps)
+    root_gid = _find_root_id(gid_maps)
+    # TODO(apmelton) - Not ideal, still trying to figure out how to properly
+    # chmod the filesystem without potentially thousands of individual chmods
+    chown(path, root_uid, root_gid, recursive=True)
 
 
 def extract_snapshot(disk_path, source_fmt, out_path, dest_fmt):
