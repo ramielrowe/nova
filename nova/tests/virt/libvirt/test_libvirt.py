@@ -971,6 +971,36 @@ class LibvirtConnTestCase(test.TestCase):
         self.assertIsInstance(cfg.devices[2],
                               vconfig.LibvirtConfigGuestConsole)
 
+    def test_get_guest_config_lxc_with_id_maps(self):
+        self.flags(virt_type='lxc', group='libvirt')
+        self.flags(uid_maps='0:1000:100', group='libvirt')
+        self.flags(gid_maps='0:1000:100', group='libvirt')
+        conn = libvirt_driver.LibvirtDriver(fake.FakeVirtAPI(), True)
+        instance_ref = db.instance_create(self.context, self.test_instance)
+
+        cfg = conn.get_guest_config(instance_ref,
+                                    _fake_network_info(self.stubs, 1),
+                                    None, {'mapping': {}})
+        self.assertEqual(cfg.uuid, instance_ref["uuid"])
+        self.assertEqual(cfg.memory, 2 * units.Mi)
+        self.assertEqual(cfg.vcpus, 1)
+        self.assertEqual(cfg.os_type, vm_mode.EXE)
+        self.assertEqual(cfg.os_init_path, "/sbin/init")
+        self.assertEqual(cfg.os_cmdline, "console=tty0 console=ttyS0")
+        self.assertIsNone(cfg.os_root)
+        self.assertEqual(len(cfg.devices), 3)
+        self.assertIsInstance(cfg.devices[0],
+                              vconfig.LibvirtConfigGuestFilesys)
+        self.assertIsInstance(cfg.devices[1],
+                              vconfig.LibvirtConfigGuestInterface)
+        self.assertIsInstance(cfg.devices[2],
+                              vconfig.LibvirtConfigGuestConsole)
+        self.assertEqual(len(cfg.idmaps), 2)
+        self.assertIsInstance(cfg.idmaps[0],
+                              vconfig.LibvirtConfigGuestUIDMap)
+        self.assertIsInstance(cfg.idmaps[1],
+                              vconfig.LibvirtConfigGuestGIDMap)
+
     def test_get_guest_config_clock(self):
         self.flags(virt_type='kvm', group='libvirt')
         conn = libvirt_driver.LibvirtDriver(fake.FakeVirtAPI(), True)
@@ -6674,6 +6704,49 @@ class LibvirtConnTestCase(test.TestCase):
         mock_get_info.assertHasCalls([mock.call(mock_instance)])
         mock_teardown.assertHasCalls([mock.call(container_dir='/tmp/rootfs')])
 
+    @mock.patch('nova.virt.disk.api.clean_lxc_namespace')
+    @mock.patch('nova.virt.libvirt.driver.LibvirtDriver.get_info')
+    @mock.patch.object(fake_libvirt_utils, 'chown_for_id_maps')
+    @mock.patch('nova.virt.disk.api.setup_container')
+    @mock.patch('nova.openstack.common.fileutils.ensure_tree')
+    @mock.patch.object(fake_libvirt_utils, 'get_instance_path')
+    def test_create_domain_lxc_id_maps(self, mock_get_inst_path,
+                                       mock_ensure_tree, mock_setup_container,
+                                       mock_chown, mock_get_info, mock_clean):
+        self.flags(virt_type='lxc', uid_maps="0:1000:100",
+                   gid_maps="0:1000:100", group='libvirt')
+        conn = libvirt_driver.LibvirtDriver(fake.FakeVirtAPI(), True)
+        mock_domain = mock.MagicMock()
+        mock_instance = mock.MagicMock()
+        mock_get_inst_path.return_value = '/tmp/'
+        mock_image_backend = mock.MagicMock()
+        conn.image_backend = mock_image_backend
+        mock_image = mock.MagicMock()
+        mock_image.path = '/tmp/test.img'
+        conn.image_backend.image.return_value = mock_image
+        mock_setup_container.return_value = '/dev/nbd0'
+        mock_get_info.return_value = {'state': power_state.RUNNING}
+
+        domain = conn._create_domain(domain=mock_domain,
+                                     instance=mock_instance)
+
+        self.assertEqual(mock_domain, domain)
+        self.assertEqual('/dev/nbd0', mock_instance.root_device_name)
+        mock_instance.save.assertHasCalls([mock.call()])
+        mock_domain.createWithFlags.assertHasCalls([mock.call(0)])
+        mock_get_inst_path.assertHasCalls([mock.call(mock_instance)])
+        mock_ensure_tree.assertHasCalls([mock.call('/tmp/rootfs')])
+        conn.image_backend.assertHasCalls([mock.call(mock_instance, 'disk')])
+        setup_container_call = mock.call('/tmp/test.img',
+                                         container_dir='/tmp/rootfs',
+                                         use_cow=CONF.use_cow_images)
+        mock_setup_container.assertHasCalls([setup_container_call])
+        chown_call = mock.call('/tmp/rootfs',
+                               [('0', '1000', '100')], [('0', '1000', '100')])
+        mock_chown.assertHasCalls([chown_call])
+        mock_get_info.assertHasCalls([mock.call(mock_instance)])
+        mock_clean.assertHasCalls([mock.call(container_dir='/tmp/rootfs')])
+
     def test_create_domain_define_xml_fails(self):
         """Tests that the xml is logged when defining the domain fails."""
         fake_xml = "<test>this is a test</test>"
@@ -8965,6 +9038,76 @@ class LibvirtDriverTestCase(test.TestCase):
             None,  # files
         ]
         self._test_inject_data(driver_params, disk_params, called=False)
+
+    def _assert_on_id_map(self, idmap, klass, start, target, count):
+        self.assertIsInstance(idmap, klass)
+        self.assertEqual(start, idmap.start)
+        self.assertEqual(target, idmap.target)
+        self.assertEqual(count, idmap.count)
+
+    def test_get_id_maps(self):
+        self.flags(virt_type="lxc", group="libvirt")
+        CONF.libvirt.virt_type = "lxc"
+        CONF.libvirt.uid_maps = "0:10000:1,1:20000:10"
+        CONF.libvirt.gid_maps = "0:10000:1,1:20000:10"
+        conn = libvirt_driver.LibvirtDriver(fake.FakeVirtAPI())
+
+        idmaps = conn.get_guest_idmaps()
+
+        self.assertEqual(len(idmaps), 4)
+        self._assert_on_id_map(idmaps[0],
+                               vconfig.LibvirtConfigGuestUIDMap,
+                               0, 10000, 1)
+        self._assert_on_id_map(idmaps[1],
+                               vconfig.LibvirtConfigGuestUIDMap,
+                               1, 20000, 10)
+        self._assert_on_id_map(idmaps[2],
+                               vconfig.LibvirtConfigGuestGIDMap,
+                               0, 10000, 1)
+        self._assert_on_id_map(idmaps[3],
+                               vconfig.LibvirtConfigGuestGIDMap,
+                               1, 20000, 10)
+
+    def test_get_id_maps_not_lxc(self):
+        CONF.libvirt.uid_maps = "0:10000:1,1:20000:10"
+        CONF.libvirt.gid_maps = "0:10000:1,1:20000:10"
+        conn = libvirt_driver.LibvirtDriver(fake.FakeVirtAPI())
+
+        idmaps = conn.get_guest_idmaps()
+
+        self.assertEqual(0, len(idmaps))
+
+    def test_get_id_maps_only_uid(self):
+        self.flags(virt_type="lxc", group="libvirt")
+        CONF.libvirt.uid_maps = "0:10000:1,1:20000:10"
+        CONF.libvirt.gid_maps = ""
+        conn = libvirt_driver.LibvirtDriver(fake.FakeVirtAPI())
+
+        idmaps = conn.get_guest_idmaps()
+
+        self.assertEqual(2, len(idmaps))
+        self._assert_on_id_map(idmaps[0],
+                               vconfig.LibvirtConfigGuestUIDMap,
+                               0, 10000, 1)
+        self._assert_on_id_map(idmaps[1],
+                               vconfig.LibvirtConfigGuestUIDMap,
+                               1, 20000, 10)
+
+    def test_get_id_maps_only_gid(self):
+        self.flags(virt_type="lxc", group="libvirt")
+        CONF.libvirt.uid_maps = ""
+        CONF.libvirt.gid_maps = "0:10000:1,1:20000:10"
+        conn = libvirt_driver.LibvirtDriver(fake.FakeVirtAPI())
+
+        idmaps = conn.get_guest_idmaps()
+
+        self.assertEqual(2, len(idmaps))
+        self._assert_on_id_map(idmaps[0],
+                               vconfig.LibvirtConfigGuestGIDMap,
+                               0, 10000, 1)
+        self._assert_on_id_map(idmaps[1],
+                               vconfig.LibvirtConfigGuestGIDMap,
+                               1, 20000, 10)
 
 
 class LibvirtVolumeUsageTestCase(test.TestCase):
