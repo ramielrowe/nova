@@ -541,9 +541,21 @@ def chown(path, owner):
     """Change ownership of file or directory
 
     :param path: File or directory whose ownership to change
-    :param owner: Desired new owner (given as uid or username)
+    :param owner: Desired new owner user (given as uid or username)
     """
     execute('chown', owner, path, run_as_root=True)
+
+
+def chown_for_id_maps(path, uid_maps, gid_maps):
+    """Change ownership of file or directory for an id mapped
+    environment
+
+    :param path: File or directory whose ownership to change
+    :param uid_maps: String containing uid_maps config
+    :param gid_maps: String container gid_maps config
+    """
+    execute('idmapshift', '-u', uid_maps, '-g', gid_maps, path,
+            run_as_root=True)
 
 
 def extract_snapshot(disk_path, source_fmt, out_path, dest_fmt):

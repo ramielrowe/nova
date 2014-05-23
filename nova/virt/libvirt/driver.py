@@ -259,6 +259,16 @@ libvirt_opts = [
                 help='A path to a device that will be used as source of '
                      'entropy on the host. Permitted options are: '
                      '/dev/random or /dev/hwrng'),
+    cfg.StrOpt('uid_maps',
+               default='',
+               help='Comma separated list of uid targets and ranges.'
+                    'Syntax is guest-uid:host-uid:count, ...'
+                    'Maximum of 5 allowed.'),
+    cfg.StrOpt('gid_maps',
+               default='',
+               help='Comma separated list of guid targets and ranges.'
+                    'Syntax is guest-gid:host-gid:count, ...'
+                    'Maximum of 5 allowed.')
     ]
 
 CONF = cfg.CONF
@@ -3112,6 +3122,45 @@ class LibvirtDriver(driver.ComputeDriver):
 
         return dev
 
+    @staticmethod
+    def _parse_idmaps(map_string):
+        mappings = []
+        for mapping in map_string.split(','):
+            try:
+                values = [int(i) for i in mapping.split(':')]
+                mappings.append((values[0], values[1], values[2]))
+            except (ValueError, IndexError):
+                LOG.warn(_("Invalid value for id mapping %s") % mapping)
+        return mappings
+
+    @staticmethod
+    def _create_idmaps(klass, mappings):
+        id_maps = []
+        if len(mappings) > 5:
+            mappings = mappings[0:5]
+            LOG.warn(_("Too many id maps, only including first five."))
+        for (start, target, count) in mappings:
+            idmap = klass()
+            idmap.start = start
+            idmap.target = target
+            idmap.count = count
+            id_maps.append(idmap)
+        return id_maps
+
+    def get_guest_idmaps(self):
+        id_maps = []
+        if CONF.libvirt.virt_type == 'lxc' and CONF.libvirt.uid_maps:
+            uid_mappings = self._parse_idmaps(CONF.libvirt.uid_maps)
+            uid_maps = self._create_idmaps(vconfig.LibvirtConfigGuestUIDMap,
+                                           uid_mappings)
+            id_maps.extend(uid_maps)
+        if CONF.libvirt.virt_type == 'lxc' and CONF.libvirt.gid_maps:
+            gid_mappings = self._parse_idmaps(CONF.libvirt.gid_maps)
+            gid_maps = self._create_idmaps(vconfig.LibvirtConfigGuestGIDMap,
+                                           gid_mappings)
+            id_maps.extend(gid_maps)
+        return id_maps
+
     def get_guest_config(self, instance, network_info, image_meta,
                          disk_info, rescue=None, block_device_info=None):
         """Get config data for parameters.
@@ -3138,6 +3187,7 @@ class LibvirtDriver(driver.ComputeDriver):
         guest.memory = flavor.memory_mb * units.Ki
         guest.vcpus = flavor.vcpus
         guest.cpuset = CONF.vcpu_pin_set
+        guest.idmaps = self.get_guest_idmaps()
 
         quota_items = ['cpu_shares', 'cpu_period', 'cpu_quota']
         for key, value in flavor.extra_specs.iteritems():
@@ -3568,6 +3618,11 @@ class LibvirtDriver(driver.ComputeDriver):
             if container_root_device:
                 instance.root_device_name = container_root_device
                 instance.save()
+
+            if CONF.libvirt.uid_maps or CONF.libvirt.gid_maps:
+                libvirt_utils.chown_for_id_maps(container_dir,
+                                                CONF.libvirt.uid_maps,
+                                                CONF.libvirt.gid_maps)
 
         if xml:
             try:

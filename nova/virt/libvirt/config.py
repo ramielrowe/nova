@@ -766,6 +766,43 @@ class LibvirtConfigGuestFilesys(LibvirtConfigGuestDevice):
         return dev
 
 
+class LibvirtConfigGuestIDMap(LibvirtConfigObject):
+
+    def __init__(self, **kwargs):
+        super(LibvirtConfigGuestIDMap, self).__init__(**kwargs)
+        self.start = 0
+        self.target = 0
+        self.count = 10000
+
+    def parse_dom(self, xmldoc):
+        self.start = int(xmldoc.get('start'))
+        self.target = int(xmldoc.get('target'))
+        self.count = int(xmldoc.get('count'))
+
+    def format_dom(self):
+        obj = super(LibvirtConfigGuestIDMap, self).format_dom()
+
+        obj.set("start", str(self.start))
+        obj.set("target", str(self.target))
+        obj.set("count", str(self.count))
+
+        return obj
+
+
+class LibvirtConfigGuestUIDMap(LibvirtConfigGuestIDMap):
+
+    def __init__(self, **kwargs):
+        super(LibvirtConfigGuestUIDMap, self).__init__(root_name="uid",
+                                                       **kwargs)
+
+
+class LibvirtConfigGuestGIDMap(LibvirtConfigGuestIDMap):
+
+    def __init__(self, **kwargs):
+        super(LibvirtConfigGuestGIDMap, self).__init__(root_name="gid",
+                                                       **kwargs)
+
+
 class LibvirtConfigGuestInterface(LibvirtConfigGuestDevice):
 
     def __init__(self, **kwargs):
@@ -1151,6 +1188,7 @@ class LibvirtConfigGuest(LibvirtConfigObject):
         self.os_smbios = None
         self.os_mach_type = None
         self.devices = []
+        self.idmaps = []
 
     def _format_basic_props(self, root):
         root.append(self._text_node("uuid", self.uuid))
@@ -1217,6 +1255,14 @@ class LibvirtConfigGuest(LibvirtConfigObject):
             devices.append(dev.format_dom())
         root.append(devices)
 
+    def _format_idmaps(self, root):
+        if len(self.idmaps) == 0:
+            return
+        idmaps = etree.Element("idmap")
+        for idmap in self.idmaps:
+            idmaps.append(idmap.format_dom())
+        root.append(idmaps)
+
     def format_dom(self):
         root = super(LibvirtConfigGuest, self).format_dom()
 
@@ -1239,11 +1285,15 @@ class LibvirtConfigGuest(LibvirtConfigObject):
 
         self._format_devices(root)
 
+        self._format_idmaps(root)
+
         return root
 
     def parse_dom(self, xmldoc):
         # Note: This cover only for: LibvirtConfigGuestDisks
         #                            LibvirtConfigGuestHostdevPCI
+        #                            LibvirtConfigGuestUidMap
+        #                            LibvirtConfigGuestGidMap
         #                            LibvirtConfigGuestCPU
         for c in xmldoc.getchildren():
             if c.tag == 'devices':
@@ -1256,6 +1306,17 @@ class LibvirtConfigGuest(LibvirtConfigObject):
                         obj = LibvirtConfigGuestHostdevPCI()
                         obj.parse_dom(d)
                         self.devices.append(obj)
+            if c.tag == 'idmap':
+                for map in c.getchildren():
+                    obj = None
+                    if map.tag == 'uid':
+                        obj = LibvirtConfigGuestUIDMap()
+                    elif map.tag == 'gid':
+                        obj = LibvirtConfigGuestGIDMap()
+
+                    if obj:
+                        obj.parse_dom(map)
+                        self.idmaps.append(obj)
             elif c.tag == 'cpu':
                 obj = LibvirtConfigGuestCPU()
                 obj.parse_dom(c)

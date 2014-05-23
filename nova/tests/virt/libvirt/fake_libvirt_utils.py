@@ -208,3 +208,7 @@ def remove_rbd_volumes(pool, *names):
 
 def get_arch(image_meta):
     pass
+
+
+def chown_for_id_maps(path, uid_maps, gid_maps):
+    pass
