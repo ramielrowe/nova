@@ -3420,7 +3420,8 @@ class LibvirtDriver(driver.ComputeDriver):
             image = self.image_backend.image(instance, 'disk')
             container_root_device = disk.setup_container(image.path,
                                                 container_dir=container_dir,
-                                                use_cow=CONF.use_cow_images)
+                                                use_cow=CONF.use_cow_images,
+                                                use_noop=image.noop_mount)
 
             #Note(GuanQiang): save container root device name here, used for
             #                 detaching the linked image device when deleting

@@ -36,13 +36,21 @@ class Mount(object):
     mode = None  # to be overridden in subclasses
 
     @staticmethod
-    def instance_for_format(imgfile, mountdir, partition, imgfmt):
+    def instance_for_format(imgfile, mountdir, partition, imgfmt,
+                            use_noop=False):
         LOG.debug(_("Instance for format imgfile=%(imgfile)s "
                     "mountdir=%(mountdir)s partition=%(partition)s "
-                    "imgfmt=%(imgfmt)s"),
+                    "imgfmt=%(imgfmt)s use_noop=%(use_noop)s"),
                   {'imgfile': imgfile, 'mountdir': mountdir,
-                   'partition': partition, 'imgfmt': imgfmt})
-        if imgfmt == "raw":
+                   'partition': partition, 'imgfmt': imgfmt,
+                   'use_noop': use_noop})
+
+        if use_noop:
+            LOG.debug(_("Using NoopMount"))
+            return importutils.import_object(
+                "nova.virt.disk.mount.noop.NoopMount",
+                imgfile, mountdir, partition)
+        elif imgfmt == "raw":
             LOG.debug(_("Using LoopMount"))
             return importutils.import_object(
                 "nova.virt.disk.mount.loop.LoopMount",
@@ -65,11 +73,16 @@ class Mount(object):
             return importutils.import_object(
                 "nova.virt.disk.mount.loop.LoopMount",
                 imgfile, mountdir, partition, device)
-        else:
+        elif "nbd" in device:
             LOG.debug(_("Using NbdMount"))
             return importutils.import_object(
                 "nova.virt.disk.mount.nbd.NbdMount",
                 imgfile, mountdir, partition, device)
+        elif "mapper" in device:
+            LOG.debug(_("Using NoopMount"))
+            return importutils.import_object(
+                "nova.virt.disk.mount.noop.NoopMount",
+                imgfile, mountdir, partition, mountdir)
 
     def __init__(self, image, mount_dir, partition=None, device=None):
 
@@ -99,8 +112,9 @@ class Mount(object):
         if os.path.isabs(device) and os.path.exists(device):
             if device.startswith('/dev/mapper/'):
                 device = os.path.basename(device)
-                device, self.partition = device.rsplit('p', 1)
-                self.device = os.path.join('/dev', device)
+                if 'p' in device:
+                    device, self.partition = device.rsplit('p', 1)
+                    self.device = os.path.join('/dev', device)
 
     def get_dev(self):
         """Make the image available as a block device in the file system."""

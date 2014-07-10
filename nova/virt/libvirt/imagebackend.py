@@ -103,6 +103,7 @@ class Image(object):
         self.driver_format = driver_format
         self.is_block_dev = is_block_dev
         self.preallocate = False
+        self.noop_mount = False
 
         # NOTE(mikal): We need a lock directory which is shared along with
         # instance files, to cover the scenario where multiple compute nodes
@@ -349,6 +350,7 @@ class Lvm(Image):
 
     def __init__(self, instance=None, disk_name=None, path=None):
         super(Lvm, self).__init__("block", "raw", is_block_dev=True)
+        self.noop_mount = True
 
         if path:
             info = libvirt_utils.logical_volume_info(path)
