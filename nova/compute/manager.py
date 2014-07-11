@@ -44,6 +44,7 @@ from nova import block_device
 from nova.cells import rpcapi as cells_rpcapi
 from nova.cloudpipe import pipelib
 from nova import compute
+from nova.compute import build_result
 from nova.compute import flavors
 from nova.compute import power_state
 from nova.compute import resource_tracker
@@ -1845,6 +1846,7 @@ class ComputeManager(manager.Manager):
 
     # NOTE(mikal): No object_compat wrapper on this method because its
     # callers all pass objects already
+    @hooks.add_hook('build_instance')
     @wrap_exception()
     @reverts_task_state
     @wrap_instance_event
@@ -1860,6 +1862,7 @@ class ComputeManager(manager.Manager):
                 filter_properties, admin_password, injected_files,
                 requested_networks, security_groups, block_device_mapping,
                 node=None, limits=None):
+            result = build_result.FAILED
 
             try:
                 LOG.audit(_('Starting instance...'), context=context,
@@ -1871,10 +1874,10 @@ class ComputeManager(manager.Manager):
             except exception.InstanceNotFound:
                 msg = 'Instance disappeared before build.'
                 LOG.debug(msg, instance=instance)
-                return
+                return result
             except exception.UnexpectedTaskStateError as e:
                 LOG.debug(e.format_message(), instance=instance)
-                return
+                return result
 
             # b64 decode the files to inject:
             decoded_files = self._decode_files(injected_files)
@@ -1892,6 +1895,7 @@ class ComputeManager(manager.Manager):
                         decoded_files, admin_password, requested_networks,
                         security_groups, block_device_mapping, node, limits,
                         filter_properties)
+                result = build_result.ACTIVE
             except exception.RescheduledException as e:
                 LOG.debug(e.format_message(), instance=instance)
                 retry = filter_properties.get('retry', None)
@@ -1901,7 +1905,7 @@ class ComputeManager(manager.Manager):
                     self._cleanup_allocated_networks(context, instance,
                         requested_networks)
                     self._set_instance_error_state(context, instance.uuid)
-                    return
+                    return result
                 retry['exc'] = traceback.format_exception(*sys.exc_info())
                 # dhcp_options are per host, so if they're set we need to
                 # deallocate the networks and reallocate on the next host.
@@ -1916,6 +1920,7 @@ class ComputeManager(manager.Manager):
                         image, filter_properties, admin_password,
                         injected_files, requested_networks, security_groups,
                         block_device_mapping)
+                result = build_result.RESCHEDULED
             except (exception.InstanceNotFound,
                     exception.UnexpectedDeletingTaskStateError):
                 msg = 'Instance disappeared during build.'
@@ -1934,11 +1939,12 @@ class ComputeManager(manager.Manager):
                 self._cleanup_allocated_networks(context, instance,
                         requested_networks)
                 self._set_instance_error_state(context, instance)
+            return result
 
-        do_build_and_run_instance(context, instance, image, request_spec,
-                filter_properties, admin_password, injected_files,
-                requested_networks, security_groups, block_device_mapping,
-                node, limits)
+        return do_build_and_run_instance(context, instance, image,
+                request_spec, filter_properties, admin_password,
+                injected_files, requested_networks, security_groups,
+                block_device_mapping, node, limits)
 
     def _build_and_run_instance(self, context, instance, image, injected_files,
             admin_password, requested_networks, security_groups,

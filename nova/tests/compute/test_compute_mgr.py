@@ -20,6 +20,7 @@ import mock
 import mox
 from oslo.config import cfg
 
+from nova.compute import build_result
 from nova.compute import power_state
 from nova.compute import task_states
 from nova.compute import utils as compute_utils
@@ -1639,8 +1640,8 @@ class ComputeManagerBuildInstanceTestCase(test.NoDBTestCase):
         self._instance_action_events()
         self.mox.ReplayAll()
 
-        self.compute.build_and_run_instance(self.context, self.instance,
-                self.image, request_spec={},
+        result = self.compute.build_and_run_instance(self.context,
+                self.instance, self.image, request_spec={},
                 filter_properties=self.filter_properties,
                 injected_files=self.injected_files,
                 admin_password=self.admin_pass,
@@ -1648,6 +1649,8 @@ class ComputeManagerBuildInstanceTestCase(test.NoDBTestCase):
                 security_groups=self.security_groups,
                 block_device_mapping=self.block_device_mapping, node=self.node,
                 limits=self.limits)
+
+        self.assertEqual(build_result.ACTIVE, result)
 
     def test_build_abort_exception(self):
         self.mox.StubOutWithMock(self.compute, '_build_and_run_instance')
@@ -1669,8 +1672,8 @@ class ComputeManagerBuildInstanceTestCase(test.NoDBTestCase):
         self._instance_action_events()
         self.mox.ReplayAll()
 
-        self.compute.build_and_run_instance(self.context, self.instance,
-                self.image, request_spec={},
+        result = self.compute.build_and_run_instance(self.context,
+                self.instance, self.image, request_spec={},
                 filter_properties=self.filter_properties,
                 injected_files=self.injected_files,
                 admin_password=self.admin_pass,
@@ -1678,6 +1681,8 @@ class ComputeManagerBuildInstanceTestCase(test.NoDBTestCase):
                 security_groups=self.security_groups,
                 block_device_mapping=self.block_device_mapping, node=self.node,
                 limits=self.limits)
+
+        self.assertEqual(build_result.FAILED, result)
 
     def test_rescheduled_exception(self):
         self.mox.StubOutWithMock(self.compute, '_build_and_run_instance')
@@ -1699,8 +1704,8 @@ class ComputeManagerBuildInstanceTestCase(test.NoDBTestCase):
         self._instance_action_events()
         self.mox.ReplayAll()
 
-        self.compute.build_and_run_instance(self.context, self.instance,
-                self.image, request_spec={},
+        result = self.compute.build_and_run_instance(self.context,
+                self.instance, self.image, request_spec={},
                 filter_properties=self.filter_properties,
                 injected_files=self.injected_files,
                 admin_password=self.admin_pass,
@@ -1708,6 +1713,8 @@ class ComputeManagerBuildInstanceTestCase(test.NoDBTestCase):
                 security_groups=self.security_groups,
                 block_device_mapping=self.block_device_mapping, node=self.node,
                 limits=self.limits)
+
+        self.assertEqual(build_result.RESCHEDULED, result)
 
     def test_rescheduled_exception_without_retry(self):
         self.mox.StubOutWithMock(self.compute, '_build_and_run_instance')
@@ -1728,8 +1735,8 @@ class ComputeManagerBuildInstanceTestCase(test.NoDBTestCase):
         self._instance_action_events()
         self.mox.ReplayAll()
 
-        self.compute.build_and_run_instance(self.context, self.instance,
-                self.image, request_spec={},
+        result = self.compute.build_and_run_instance(self.context,
+                self.instance, self.image, request_spec={},
                 filter_properties={},
                 injected_files=self.injected_files,
                 admin_password=self.admin_pass,
@@ -1737,6 +1744,8 @@ class ComputeManagerBuildInstanceTestCase(test.NoDBTestCase):
                 security_groups=self.security_groups,
                 block_device_mapping=self.block_device_mapping, node=self.node,
                 limits=self.limits)
+
+        self.assertEqual(build_result.FAILED, result)
 
     def test_rescheduled_exception_do_not_deallocate_network(self):
         self.mox.StubOutWithMock(self.compute, '_build_and_run_instance')
@@ -1758,8 +1767,8 @@ class ComputeManagerBuildInstanceTestCase(test.NoDBTestCase):
         self._instance_action_events()
         self.mox.ReplayAll()
 
-        self.compute.build_and_run_instance(self.context, self.instance,
-                self.image, request_spec={},
+        result = self.compute.build_and_run_instance(self.context,
+                self.instance, self.image, request_spec={},
                 filter_properties=self.filter_properties,
                 injected_files=self.injected_files,
                 admin_password=self.admin_pass,
@@ -1767,6 +1776,8 @@ class ComputeManagerBuildInstanceTestCase(test.NoDBTestCase):
                 security_groups=self.security_groups,
                 block_device_mapping=self.block_device_mapping, node=self.node,
                 limits=self.limits)
+
+        self.assertEqual(build_result.RESCHEDULED, result)
 
     def test_rescheduled_exception_deallocate_network_if_dhcp(self):
         self.mox.StubOutWithMock(self.compute, '_build_and_run_instance')
@@ -1794,8 +1805,8 @@ class ComputeManagerBuildInstanceTestCase(test.NoDBTestCase):
         self._instance_action_events()
         self.mox.ReplayAll()
 
-        self.compute.build_and_run_instance(self.context, self.instance,
-                self.image, request_spec={},
+        result = self.compute.build_and_run_instance(self.context,
+                self.instance, self.image, request_spec={},
                 filter_properties=self.filter_properties,
                 injected_files=self.injected_files,
                 admin_password=self.admin_pass,
@@ -1803,6 +1814,8 @@ class ComputeManagerBuildInstanceTestCase(test.NoDBTestCase):
                 security_groups=self.security_groups,
                 block_device_mapping=self.block_device_mapping, node=self.node,
                 limits=self.limits)
+
+        self.assertEqual(build_result.RESCHEDULED, result)
 
     def _test_build_and_run_exceptions(self, exc, set_error=False):
         self.mox.StubOutWithMock(self.compute, '_build_and_run_instance')
