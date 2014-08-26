@@ -7612,14 +7612,13 @@ Active:          8381604 kB
         conn = libvirt_driver.LibvirtDriver(fake.FakeVirtAPI(), True)
         mock_domain = mock.MagicMock()
         mock_instance = mock.MagicMock()
-        mock_get_inst_path.return_value = '/tmp/'
 
         domain = conn._create_domain(domain=mock_domain,
                                      instance=mock_instance)
 
         self.assertEqual(mock_domain, domain)
-        mock_get_inst_path.assertHasCalls([mock.call(mock_instance)])
-        mock_domain.createWithFlags.assertHasCalls([mock.call(0)])
+        self.assertFalse(mock_get_inst_path.called)
+        mock_domain.createWithFlags.assert_called_once_with(0)
 
     @mock.patch('nova.virt.disk.api.clean_lxc_namespace')
     @mock.patch('nova.virt.libvirt.driver.LibvirtDriver.get_info')
