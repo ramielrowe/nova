@@ -7129,7 +7129,8 @@ class LibvirtConnTestCase(test.TestCase):
                                 disk_info_json)
         conn._create_domain_and_network(self.context, dummyxml, instance,
                                         network_info, block_device_info,
-                                        reboot=True, vifs_already_plugged=True)
+                                        reboot=True, vifs_already_plugged=True,
+                                        disk_info=disk_info)
         self.mox.ReplayAll()
 
         conn._hard_reboot(self.context, instance, network_info,
@@ -7377,7 +7378,8 @@ class LibvirtConnTestCase(test.TestCase):
             conn._image_api, instance['image_ref'], instance)
         self.assertTrue(mock_detachDeviceFlags.called)
 
-    def test_resume(self):
+    @mock.patch('nova.virt.libvirt.blockinfo.get_disk_info')
+    def test_resume(self, mock_get_disk_info):
         dummyxml = ("<domain type='kvm'><name>instance-0000000a</name>"
                     "<devices>"
                     "<disk type='file'><driver name='qemu' type='raw'/>"
@@ -7388,6 +7390,8 @@ class LibvirtConnTestCase(test.TestCase):
                     "<target dev='vdb' bus='virtio'/></disk>"
                     "</devices></domain>")
         instance = db.instance_create(self.context, self.test_instance)
+        disk_info = mock.MagicMock()
+        mock_get_disk_info.return_value = disk_info
         network_info = _fake_network_info(self.stubs, 1)
         block_device_info = None
         conn = libvirt_driver.LibvirtDriver(fake.FakeVirtAPI(), False)
@@ -7409,7 +7413,8 @@ class LibvirtConnTestCase(test.TestCase):
                                         self.context, dummyxml,
                                         instance, network_info,
                                         block_device_info=block_device_info,
-                                        vifs_already_plugged=True)])
+                                        vifs_already_plugged=True,
+                                        disk_info=disk_info)])
             _attach_pci_devices.assert_has_calls([mock.call('fake_dom',
                                                  'fake_pci_devs')])
 
@@ -11331,7 +11336,8 @@ class LibvirtDriverTestCase(test.TestCase):
                 info['path'], 50, use_cow=False)
             mock_disk_raw_to_qcow2.assert_called_once_with(info['path'])
 
-    def _test_finish_migration(self, power_on, resize_instance=False):
+    def _test_finish_migration(self, mock_get_disk_info, power_on,
+                               resize_instance=False):
         """Test for nova.virt.libvirt.libvirt_driver.LivirtConnection
         .finish_migration.
         """
@@ -11341,6 +11347,8 @@ class LibvirtDriverTestCase(test.TestCase):
                      {'type': 'raw', 'path': '/test/disk.local',
                       'local_gb': 10, 'backing_file': '/base/disk.local'}]
         disk_info_text = jsonutils.dumps(disk_info)
+        mocked_disk_info = {'mapping': mock.MagicMock()}
+        mock_get_disk_info.return_value = mocked_disk_info
         powered_on = power_on
         self.fake_create_domain_called = False
         self.fake_disk_resize_called = False
@@ -11357,15 +11365,17 @@ class LibvirtDriverTestCase(test.TestCase):
                               disk_mapping, suffix='',
                               disk_images=None, network_info=None,
                               block_device_info=None, inject_files=True):
+            self.assertEqual(mocked_disk_info['mapping'], disk_mapping)
             self.assertFalse(inject_files)
 
         def fake_create_domain_and_network(
-            context, xml, instance, network_info,
-            block_device_info=None, power_on=True, reboot=False,
-            vifs_already_plugged=False):
+                context, xml, instance, network_info,
+                block_device_info=None, power_on=True, reboot=False,
+                vifs_already_plugged=False, disk_info=None):
             self.fake_create_domain_called = True
             self.assertEqual(powered_on, power_on)
             self.assertTrue(vifs_already_plugged)
+            self.assertEqual(mocked_disk_info, disk_info)
 
         def fake_enable_hairpin(instance):
             pass
@@ -11409,14 +11419,18 @@ class LibvirtDriverTestCase(test.TestCase):
         self.assertEqual(
             resize_instance, self.fake_disk_resize_called)
 
-    def test_finish_migration_resize(self):
-        self._test_finish_migration(True, resize_instance=True)
+    @mock.patch('nova.virt.libvirt.blockinfo.get_disk_info')
+    def test_finish_migration_resize(self, mock_get_disk_info):
+        self._test_finish_migration(mock_get_disk_info, True,
+                                    resize_instance=True)
 
-    def test_finish_migration_power_on(self):
-        self._test_finish_migration(True)
+    @mock.patch('nova.virt.libvirt.blockinfo.get_disk_info')
+    def test_finish_migration_power_on(self, mock_get_disk_info):
+        self._test_finish_migration(mock_get_disk_info, True)
 
-    def test_finish_migration_power_off(self):
-        self._test_finish_migration(False)
+    @mock.patch('nova.virt.libvirt.blockinfo.get_disk_info')
+    def test_finish_migration_power_off(self, mock_get_disk_info):
+        self._test_finish_migration(mock_get_disk_info, False)
 
     def _test_finish_revert_migration(self, power_on):
         """Test for nova.virt.libvirt.libvirt_driver.LivirtConnection
@@ -11503,7 +11517,7 @@ class LibvirtDriverTestCase(test.TestCase):
         self.stubs.Set(self.libvirtconnection, '_get_guest_xml',
                        lambda *a, **k: None)
         self.stubs.Set(self.libvirtconnection, '_create_domain_and_network',
-                       lambda *a: None)
+                       lambda *a, **k: None)
         self.stubs.Set(loopingcall, 'FixedIntervalLoopingCall',
                        lambda *a, **k: FakeLoopingCall())
 

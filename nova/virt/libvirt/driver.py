@@ -2360,7 +2360,8 @@ class LibvirtDriver(driver.ComputeDriver):
         # start the instance.
         self._create_domain_and_network(context, xml, instance, network_info,
                                         block_device_info, reboot=True,
-                                        vifs_already_plugged=True)
+                                        vifs_already_plugged=True,
+                                        disk_info=disk_info)
         self._prepare_pci_devices_for_use(
             pci_manager.get_instance_pci_devs(instance, 'all'))
 
@@ -2485,11 +2486,29 @@ class LibvirtDriver(driver.ComputeDriver):
 
     def resume(self, context, instance, network_info, block_device_info=None):
         """resume the specified instance."""
+        # Get the system metadata from the instance
+        system_meta = utils.instance_sys_meta(instance)
+
+        # Convert the system metadata to image metadata
+        image_meta = utils.get_image_from_system_metadata(system_meta)
+        if not image_meta:
+            image_ref = instance.get('image_ref')
+            image_meta = compute_utils.get_image_metadata(context,
+                                                          self._image_api,
+                                                          image_ref,
+                                                          instance)
+
+        disk_info = blockinfo.get_disk_info(CONF.libvirt.virt_type,
+                                            instance,
+                                            block_device_info,
+                                            image_meta)
+
         xml = self._get_existing_domain_xml(instance, network_info,
                                             block_device_info)
         dom = self._create_domain_and_network(context, xml, instance,
                            network_info, block_device_info=block_device_info,
-                           vifs_already_plugged=True)
+                           vifs_already_plugged=True,
+                           disk_info=disk_info)
         self._attach_pci_devices(dom,
             pci_manager.get_instance_pci_devs(instance))
         self._attach_sriov_ports(context, instance, dom, network_info)
@@ -5998,7 +6017,8 @@ class LibvirtDriver(driver.ComputeDriver):
                                   write_to_disk=True)
         self._create_domain_and_network(context, xml, instance, network_info,
                                         block_device_info, power_on,
-                                        vifs_already_plugged=True)
+                                        vifs_already_plugged=True,
+                                        disk_info=disk_info)
         if power_on:
             timer = loopingcall.FixedIntervalLoopingCall(
                                                     self._wait_for_running,
@@ -6037,7 +6057,8 @@ class LibvirtDriver(driver.ComputeDriver):
         xml = self._get_guest_xml(context, instance, network_info, disk_info,
                                   block_device_info=block_device_info)
         self._create_domain_and_network(context, xml, instance, network_info,
-                                        block_device_info, power_on)
+                                        block_device_info, power_on,
+                                        disk_info=disk_info)
 
         if power_on:
             timer = loopingcall.FixedIntervalLoopingCall(
