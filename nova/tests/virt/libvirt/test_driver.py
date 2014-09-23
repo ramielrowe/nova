@@ -7198,7 +7198,7 @@ class LibvirtConnTestCase(test.TestCase):
                        '_create_domain_and_network')
     @mock.patch.object(libvirt_driver.LibvirtDriver,
                        '_create_images_and_backing')
-    @mock.patch('nova.virt.libvirt.blockinfo.get_disk_info')
+    @mock.patch.object(blockinfo, 'get_disk_info')
     @mock.patch.object(libvirt_driver.LibvirtDriver, '_get_guest_xml')
     @mock.patch.object(libvirt_driver.LibvirtDriver, '_get_instance_disk_info')
     @mock.patch.object(libvirt_driver.LibvirtDriver, '_destroy')
@@ -7206,12 +7206,12 @@ class LibvirtConnTestCase(test.TestCase):
                          mock_get_guest_xml, mock_get_disk_info,
                          mock_create_images_and_backing,
                          mock_create_domain_and_network, mock_get_info):
+        conn = libvirt_driver.LibvirtDriver(fake.FakeVirtAPI(), False)
         mock_get_info.side_effect = [dict(state=power_state.RUNNING),
                                      dict(state=power_state.SHUTDOWN)]
 
         instance = db.instance_create(self.context, self.test_instance)
-        system_meta = utils.instance_sys_meta(instance)
-        image_meta = utils.get_image_from_system_metadata(system_meta)
+        image_meta = conn._get_image_metadata(self.context, instance)
 
         dummyxml = ("<domain type='kvm'><name>instance-0000000a</name>"
                     "<devices>"
@@ -7232,7 +7232,6 @@ class LibvirtConnTestCase(test.TestCase):
 
         mock_network_info = mock.MagicMock()
         mock_block_device_info = mock.MagicMock()
-        conn = libvirt_driver.LibvirtDriver(fake.FakeVirtAPI(), False)
         conn._hard_reboot(self.context, instance, mock_network_info,
                           mock_block_device_info)
 
@@ -7247,7 +7246,7 @@ class LibvirtConnTestCase(test.TestCase):
             disk_info_json)
         mock_create_domain_and_network.assert_called_once_with(self.context,
             dummyxml, instance, mock_network_info, mock_block_device_info,
-            reboot=True, vifs_already_plugged=True)
+            reboot=True, vifs_already_plugged=True, disk_info=mock_disk_info)
 
     @mock.patch('nova.openstack.common.loopingcall.FixedIntervalLoopingCall')
     @mock.patch('nova.pci.pci_manager.get_instance_pci_devs')
@@ -7259,13 +7258,15 @@ class LibvirtConnTestCase(test.TestCase):
     @mock.patch('nova.virt.libvirt.utils.get_instance_path')
     @mock.patch('nova.virt.libvirt.LibvirtDriver._get_guest_config')
     @mock.patch('nova.virt.libvirt.blockinfo.get_disk_info')
+    @mock.patch('nova.utils.get_image_from_system_metadata')
     @mock.patch('nova.virt.libvirt.LibvirtDriver._destroy')
     def test_hard_reboot_does_not_call_glance_show(self,
-            mock_destroy, mock_get_disk_info, mock_get_guest_config,
-            mock_get_instance_path, mock_write_to_file,
-            mock_get_instance_disk_info, mock_create_images_and_backing,
-            mock_create_domand_and_network, mock_prepare_pci_devices_for_use,
-            mock_get_instance_pci_devs, mock_looping_call):
+            mock_destroy, mock_get_image_from_sys_meta,
+            mock_get_disk_info, mock_get_guest_config, mock_get_instance_path,
+            mock_write_to_file, mock_get_instance_disk_info,
+            mock_create_images_and_backing, mock_create_domand_and_network,
+            mock_prepare_pci_devices_for_use, mock_get_instance_pci_devs,
+            mock_looping_call):
         """For a hard reboot, we shouldn't need an additional call to glance
         to get the image metadata.
 
@@ -7277,6 +7278,8 @@ class LibvirtConnTestCase(test.TestCase):
         https://bugs.launchpad.net/nova/+bug/1339386
         """
         conn = libvirt_driver.LibvirtDriver(fake.FakeVirtAPI(), False)
+        fake_image_meta = {'min_disk': '10', 'properties': {'foo': 'bar'}}
+        mock_get_image_from_sys_meta.return_value = fake_image_meta
 
         instance = db.instance_create(self.context, self.test_instance)
 
@@ -7497,9 +7500,13 @@ class LibvirtConnTestCase(test.TestCase):
                        '_create_domain_and_network')
     @mock.patch.object(libvirt_driver.LibvirtDriver,
                        '_get_existing_domain_xml')
-    def test_resume(self, mock_get_existing_domain_xml,
+    @mock.patch('nova.virt.libvirt.blockinfo.get_disk_info')
+    def test_resume(self, mock_get_disk_info, mock_get_existing_domain_xml,
                     mock_create_domain_and_network, mock_attach_pci_devices,
                     mock_get_instance_pci_devs):
+        mock_disk_info = mock.MagicMock()
+        mock_get_disk_info.return_value = mock_disk_info
+
         dummyxml = ("<domain type='kvm'><name>instance-0000000a</name>"
                     "<devices>"
                     "<disk type='file'><driver name='qemu' type='raw'/>"
@@ -7529,7 +7536,7 @@ class LibvirtConnTestCase(test.TestCase):
         mock_create_domain_and_network.assert_called_once_with(self.context,
             dummyxml, instance, mock_network_info,
             block_device_info=mock_block_device_info,
-            vifs_already_plugged=True)
+            vifs_already_plugged=True, disk_info=mock_disk_info)
         mock_attach_pci_devices.assert_called_once_with(mock_dom,
                                                         mock.sentinel.pci_devs)
 
@@ -11559,7 +11566,7 @@ class LibvirtDriverTestCase(test.TestCase):
               disk_mapping=fake_disk_info['mapping'])
         mock_create_domain_and_network.assert_called_once_with(
             admin_context, '', instance, [], None, powered_on,
-            vifs_already_plugged=True)
+            vifs_already_plugged=True, disk_info=fake_disk_info)
         if resize_instance:
             resize_calls = [mock.call(disk_info[0], 10737418240),
                             mock.call(disk_info[1], 21474836480)]

@@ -2315,6 +2315,20 @@ class LibvirtDriver(driver.ComputeDriver):
             greenthread.sleep(1)
         return False
 
+    def _get_image_metadata(self, context, instance):
+            image_ref = instance.image_ref
+            return compute_utils.get_image_metadata(context, self._image_api,
+                                                    image_ref, instance)
+
+    def _get_disk_info(self, context, instance, block_device_info,
+                      image_meta=None):
+        if not image_meta:
+            image_meta = self._get_image_metadata(context, instance)
+        return blockinfo.get_disk_info(CONF.libvirt.virt_type,
+                                       instance,
+                                       block_device_info,
+                                       image_meta)
+
     def _hard_reboot(self, context, instance, network_info,
                      block_device_info=None):
         """Reboot a virtual machine, given an instance reference.
@@ -2331,22 +2345,10 @@ class LibvirtDriver(driver.ComputeDriver):
 
         self._destroy(instance)
 
-        # Get the system metadata from the instance
-        system_meta = utils.instance_sys_meta(instance)
+        image_meta = self._get_image_metadata(context, instance)
 
-        # Convert the system metadata to image metadata
-        image_meta = utils.get_image_from_system_metadata(system_meta)
-        if not image_meta:
-            image_ref = instance.get('image_ref')
-            image_meta = compute_utils.get_image_metadata(context,
-                                                          self._image_api,
-                                                          image_ref,
-                                                          instance)
-
-        disk_info = blockinfo.get_disk_info(CONF.libvirt.virt_type,
-                                            instance,
-                                            block_device_info,
-                                            image_meta)
+        disk_info = self._get_disk_info(context, instance, block_device_info,
+                                        image_meta=image_meta)
         # NOTE(vish): This could generate the wrong device_format if we are
         #             using the raw backend and the images don't exist yet.
         #             The create_images_and_backing below doesn't properly
@@ -2369,7 +2371,8 @@ class LibvirtDriver(driver.ComputeDriver):
         # start the instance.
         self._create_domain_and_network(context, xml, instance, network_info,
                                         block_device_info, reboot=True,
-                                        vifs_already_plugged=True)
+                                        vifs_already_plugged=True,
+                                        disk_info=disk_info)
         self._prepare_pci_devices_for_use(
             pci_manager.get_instance_pci_devs(instance, 'all'))
 
@@ -2494,11 +2497,12 @@ class LibvirtDriver(driver.ComputeDriver):
 
     def resume(self, context, instance, network_info, block_device_info=None):
         """resume the specified instance."""
+        disk_info = self._get_disk_info(context, instance, block_device_info)
         xml = self._get_existing_domain_xml(instance, network_info,
                                             block_device_info)
         dom = self._create_domain_and_network(context, xml, instance,
                            network_info, block_device_info=block_device_info,
-                           vifs_already_plugged=True)
+                           vifs_already_plugged=True, disk_info=disk_info)
         self._attach_pci_devices(dom,
             pci_manager.get_instance_pci_devs(instance))
         self._attach_sriov_ports(context, instance, dom, network_info)
@@ -6016,7 +6020,8 @@ class LibvirtDriver(driver.ComputeDriver):
                                   write_to_disk=True)
         self._create_domain_and_network(context, xml, instance, network_info,
                                         block_device_info, power_on,
-                                        vifs_already_plugged=True)
+                                        vifs_already_plugged=True,
+                                        disk_info=disk_info)
         if power_on:
             timer = loopingcall.FixedIntervalLoopingCall(
                                                     self._wait_for_running,
@@ -6055,7 +6060,8 @@ class LibvirtDriver(driver.ComputeDriver):
         xml = self._get_guest_xml(context, instance, network_info, disk_info,
                                   block_device_info=block_device_info)
         self._create_domain_and_network(context, xml, instance, network_info,
-                                        block_device_info, power_on)
+                                        block_device_info, power_on,
+                                        disk_info=disk_info)
 
         if power_on:
             timer = loopingcall.FixedIntervalLoopingCall(
