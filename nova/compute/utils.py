@@ -196,6 +196,21 @@ def _get_unused_letter(used_letters):
 
 
 def get_image_metadata(context, image_api, image_id_or_uri, instance):
+    # Get the system metadata from the instance
+    system_meta = utils.instance_sys_meta(instance)
+
+    # It is only safe to use cached image metadata when the requested image
+    # is the same as the instance's image.
+    if image_id_or_uri == instance.image_ref:
+        image = utils.get_image_from_system_metadata(system_meta)
+
+        # If the instance has inheritable properties, but no other
+        # image metadata cached in system metadata, we will get a
+        # dictionary with only the inheritable properties. In that case,
+        # the image still needs to be pulled from glance.
+        if image and ('properties' not in image or len(image) > 1):
+            return image
+
     # If the base image is still available, get its metadata
     try:
         image = image_api.get(context, image_id_or_uri)
@@ -209,9 +224,6 @@ def get_image_metadata(context, image_api, image_id_or_uri, instance):
     else:
         flavor = flavors.extract_flavor(instance)
         image_system_meta = utils.get_system_metadata_from_image(image, flavor)
-
-    # Get the system metadata from the instance
-    system_meta = utils.instance_sys_meta(instance)
 
     # Merge the metadata from the instance with the image's, if any
     system_meta.update(image_system_meta)

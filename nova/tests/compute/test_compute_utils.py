@@ -688,6 +688,78 @@ class ComputeGetImageMetadataTestCase(test.TestCase):
         self.image['properties'] = 'DONTCARE'
         self.assertThat(self.image, matchers.DictMatches(image_meta))
 
+    def test_get_image_meta_uncached(self):
+        instance = self.instance_obj
+        instance.image_ref = 'fake-image-1'
+        image_meta = compute_utils.get_image_metadata(
+            self.ctx, self.mock_image_api, 'fake-image-2', instance)
+
+        self.image['properties'] = 'DONTCARE'
+        self.assertThat(self.image, matchers.DictMatches(image_meta))
+        
+        self.mock_image_api.get.assert_called_once_with(self.ctx,
+                                                        'fake-image-2')
+
+    def test_get_image_meta_uncached_uses_image_api(self):
+        instance = self.instance_obj
+        instance.image_ref = 'fake-image-1'
+        image_meta = compute_utils.get_image_metadata(
+            self.ctx, self.mock_image_api, 'fake-image-2', instance)
+
+        self.image['properties'] = 'DONTCARE'
+        self.assertThat(self.image, matchers.DictMatches(image_meta))
+        
+        self.mock_image_api.get.assert_called_once_with(self.ctx,
+                                                        'fake-image-2')
+
+    @mock.patch('nova.utils.get_image_from_system_metadata')
+    def test_get_image_meta_cached_no_available_system_metadata(self, mock_get_image):
+        mock_get_image.side_effect = [dict(), self.image]
+
+        instance = self.instance_obj
+        instance.image_ref = 'fake-image-1'
+        image_meta = compute_utils.get_image_metadata(
+            self.ctx, self.mock_image_api, 'fake-image-1', instance)
+
+        self.image['properties'] = 'DONTCARE'
+        self.assertThat(self.image, matchers.DictMatches(image_meta))
+        
+        self.mock_image_api.get.assert_called_once_with(self.ctx,
+                                                        'fake-image-1')
+
+    @mock.patch('nova.utils.get_image_from_system_metadata')
+    def test_get_image_meta_uncached_only_properties(self, mock_get_image):
+        uncached_image = {'properties': {'DONTCARE': 'DONTCARE'}}
+        mock_get_image.side_effect = [uncached_image, self.image]
+
+        instance = self.instance_obj
+        instance.image_ref = 'fake-image-1'
+        image_meta = compute_utils.get_image_metadata(
+            self.ctx, self.mock_image_api, 'fake-image-1', instance)
+
+        self.image['properties'] = 'DONTCARE'
+        self.assertThat(self.image, matchers.DictMatches(image_meta))
+        
+        self.mock_image_api.get.assert_called_once_with(self.ctx,
+                                                        'fake-image-1')
+
+    @mock.patch('nova.utils.get_image_from_system_metadata')
+    def test_get_image_meta_cached_uses_system_metadata(self, mock_get_image):
+        mock_get_image.return_value = self.image
+        
+        instance = self.instance_obj
+        instance.image_ref = 'fake-image-1'
+        with mock.patch('nova.utils.instance_sys_meta') as mock_inst_sys_meta:
+            mock_inst_sys_meta.return_value = mock.sentinel.inst_sys_meta
+            image_meta = compute_utils.get_image_metadata(
+                self.ctx, self.mock_image_api, 'fake-image-1', instance)
+            mock_inst_sys_meta.assert_called_once_with(instance)
+        
+        self.image['properties'] = 'DONTCARE'
+        self.assertThat(self.image, matchers.DictMatches(image_meta))
+        mock_get_image.assert_called_once_with(mock.sentinel.inst_sys_meta)
+        self.assertFalse(self.mock_image_api.get.called)
+
     def _test_get_image_meta_exception(self, error):
         self.mock_image_api.get.side_effect = error
 
