@@ -147,3 +147,25 @@ class Stats(dict):
                                  os_type=os_type, project_id=project_id)
 
         return (vm_state, task_state, os_type, project_id)
+
+
+class ImageStats(Stats):
+    def update_stats_for_instance(self, instance):
+        uuid = instance['uuid']
+        old_state = self.states.get(uuid)
+
+        if old_state:
+            self._remove_old_stats(old_state)
+
+        super(ImageStats, self).update_stats_for_instance(instance)
+
+        if uuid in self.states:
+            self._add_new_stats(instance, self.states[uuid])
+
+    def _remove_old_stats(self, old_state):
+        self._decrement('num_img_%s' % old_state['image_ref'])
+
+    def _add_new_stats(self, instance, new_state):
+        image_ref = instance['image_ref']
+        new_state['image_ref'] = image_ref
+        self._increment('num_img_%s' % image_ref)

@@ -21,10 +21,12 @@ from nova.compute import vm_states
 from nova import test
 
 
-class StatsTestCase(test.NoDBTestCase):
+class BaseStatsTestCase(test.NoDBTestCase):
+    stats_class = stats.Stats
+
     def setUp(self):
-        super(StatsTestCase, self).setUp()
-        self.stats = stats.Stats()
+        super(BaseStatsTestCase, self).setUp()
+        self.stats = self.stats_class()
 
     def _create_instance(self, values=None):
         instance = {
@@ -38,6 +40,9 @@ class StatsTestCase(test.NoDBTestCase):
         if values:
             instance.update(values)
         return instance
+
+
+class StatsTestCase(BaseStatsTestCase):
 
     def test_os_type_count(self):
         os_type = "Linux"
@@ -220,3 +225,76 @@ class StatsTestCase(test.NoDBTestCase):
 
         self.assertEqual(0, len(self.stats))
         self.assertEqual(0, len(self.stats.states))
+
+
+class ImageStatsTestCase(BaseStatsTestCase):
+    stats_class = stats.ImageStats
+
+    def test_new_instance_num_img(self):
+        instance = self._create_instance({'uuid': 'uuid1',
+                                          'image_ref': 'image_ref1'})
+        self.stats.update_stats_for_instance(instance)
+
+        self.assertEqual(1, self.stats['num_img_image_ref1'])
+
+    def test_two_instances_same_image(self):
+        instance = self._create_instance({'uuid': 'uuid1',
+                                          'image_ref': 'image_ref1'})
+        self.stats.update_stats_for_instance(instance)
+
+        instance = self._create_instance({'uuid': 'uuid2',
+                                          'image_ref': 'image_ref1'})
+        self.stats.update_stats_for_instance(instance)
+
+        self.assertEqual(2, self.stats['num_img_image_ref1'])
+
+    def test_two_instances_different_image(self):
+        instance = self._create_instance({'uuid': 'uuid1',
+                                          'image_ref': 'image_ref1'})
+        self.stats.update_stats_for_instance(instance)
+
+        instance = self._create_instance({'uuid': 'uuid2',
+                                          'image_ref': 'image_ref2'})
+        self.stats.update_stats_for_instance(instance)
+
+        self.assertEqual(1, self.stats['num_img_image_ref1'])
+        self.assertEqual(1, self.stats['num_img_image_ref2'])
+
+    def test_existing_instance_same_image(self):
+        instance = self._create_instance({'uuid': 'uuid1',
+                                          'image_ref': 'image_ref1'})
+        self.stats.update_stats_for_instance(instance)
+        self.stats.update_stats_for_instance(instance)
+
+        self.assertEqual(1, self.stats['num_img_image_ref1'])
+
+    def test_existing_instance_different_image(self):
+        instance = self._create_instance({'uuid': 'uuid1',
+                                          'image_ref': 'image_ref1'})
+        self.stats.update_stats_for_instance(instance)
+        instance = self._create_instance({'uuid': 'uuid1',
+                                          'image_ref': 'image_ref2'})
+        self.stats.update_stats_for_instance(instance)
+
+        self.assertEqual(0, self.stats['num_img_image_ref1'])
+        self.assertEqual(1, self.stats['num_img_image_ref2'])
+
+    def test_existing_instance_deleted(self):
+        instance = self._create_instance({'uuid': 'uuid1',
+                                          'image_ref': 'image_ref1'})
+        self.stats.update_stats_for_instance(instance)
+        instance = self._create_instance({'uuid': 'uuid1',
+                                          'vm_state': vm_states.DELETED,
+                                          'image_ref': 'image_ref1'})
+        self.stats.update_stats_for_instance(instance)
+
+        self.assertEqual(0, self.stats['num_img_image_ref1'])
+
+    def test_states(self):
+        instance = self._create_instance({'uuid': 'uuid1',
+                                          'image_ref': 'image_ref1'})
+        self.stats.update_stats_for_instance(instance)
+
+        self.assertTrue('uuid1' in self.stats.states)
+        self.assertTrue('image_ref' in self.stats.states['uuid1'])
+        self.assertEqual('image_ref1', self.stats.states['uuid1']['image_ref'])
