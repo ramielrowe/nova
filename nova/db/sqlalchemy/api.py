@@ -4829,6 +4829,24 @@ def cell_get_all(context):
     return model_query(context, models.Cell, read_deleted="no").all()
 
 
+def cell_get_instance_count_by_image(context, image_ref):
+    session = get_session()
+    cell_image_count = dict()
+    with session.begin():
+        result = model_query(context, models.Instance.cell_name,
+                             read_deleted="no", base_model=models.Instance,
+                             session=session).\
+            add_column(func.count()).\
+            filter_by(image_ref=image_ref).\
+            group_by(models.Instance.cell_name).\
+            all()
+        for cell_name, image_count in result:
+            if cell_name:
+                cell_name = cell_name.split('!')[-1]
+                cell_image_count[cell_name] = image_count
+    return cell_image_count
+
+
 ########################
 # User-provided metadata
 

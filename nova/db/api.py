@@ -1596,6 +1596,10 @@ def cell_get_all(context):
     """Get all child Cells."""
     return IMPL.cell_get_all(context)
 
+def cell_get_instance_count_by_image(context, image_ref):
+    """Get count of instances with a given image per cell."""
+    return IMPL.cell_get_instance_count_by_image(context, image_ref)
+
 
 ####################
 
